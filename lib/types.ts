@@ -74,8 +74,6 @@ export interface WeeklySlot {
   rabu: string
   kamis: string
   jumat: string
-  sabtu: string
-  minggu: string
 }
 
 export function parseSlotValue(val: string): WeeklySlotData | "ISTIRAHAT" | "" {
@@ -164,21 +162,13 @@ export const formatDateDDMMYYYY = formatDateWithDay
 
 // ─── Default Data ──────────────────────────────────────────────────────────────
 export const DEFAULT_WEEKLY: WeeklySlot[] = [
-  { id: "w1",  jam: "08:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w2",  jam: "09:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w3",  jam: "10:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w4",  jam: "11:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w5",  jam: "12:00", senin: "ISTIRAHAT", selasa: "ISTIRAHAT", rabu: "ISTIRAHAT", kamis: "ISTIRAHAT", jumat: "ISTIRAHAT", sabtu: "ISTIRAHAT", minggu: "ISTIRAHAT" },
-  { id: "w6",  jam: "13:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w7",  jam: "14:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w8",  jam: "15:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w9",  jam: "16:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w10", jam: "17:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w11", jam: "18:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w12", jam: "19:00", senin:   "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w13", jam: "20:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w14", jam: "21:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w15", jam: "22:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w16", jam: "23:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
-  { id: "w17", jam: "24:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: "", sabtu: "", minggu: "" },
+  { id: "w1",  jam: "08:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w2",  jam: "09:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w3",  jam: "10:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w4",  jam: "11:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w5",  jam: "12:00", senin: "ISTIRAHAT", selasa: "ISTIRAHAT", rabu: "ISTIRAHAT", kamis: "ISTIRAHAT", jumat: "ISTIRAHAT"},
+  { id: "w6",  jam: "13:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w7",  jam: "14:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w8",  jam: "15:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
+  { id: "w9",  jam: "16:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
 ]

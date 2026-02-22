@@ -28,16 +28,13 @@ const DAYS = [
   { key: "rabu"   as const, label: "Rabu"   },
   { key: "kamis"  as const, label: "Kamis"  },
   { key: "jumat"  as const, label: "Jumat"  },
-  { key: "sabtu"  as const, label: "Sabtu"  },
-  { key: "minggu" as const, label: "Minggu" },
 ]
 
-type DayKey = "senin" | "selasa" | "rabu" | "kamis" | "jumat" | "sabtu" | "minggu"
+type DayKey = "senin" | "selasa" | "rabu" | "kamis" | "jumat"
 
 function getTodayKey(): DayKey | null {
   const map: Record<number, DayKey> = {
-    1: "senin", 2: "selasa", 3: "rabu", 4: "kamis",
-    5: "jumat", 6: "sabtu",  0: "minggu",
+    1: "senin", 2: "selasa", 3: "rabu", 4: "kamis", 5: "jumat",
   }
   return map[new Date().getDay()] ?? null
 }
@@ -167,12 +164,14 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
     }
   }
 
-  const filledCount = slots.reduce((count, slot) =>
-    count + DAYS.filter((d) => {
-      const v = parseSlotValue(slot[d.key])
-      return v !== "" && v !== "ISTIRAHAT"
-    }).length, 0
-  )
+  const filledCount = slots
+    .filter((slot) => slot.jam >= "08:00" && slot.jam <= "16:00")
+    .reduce((count, slot) =>
+      count + DAYS.filter((d) => {
+        const v = parseSlotValue(slot[d.key])
+        return v !== "" && v !== "ISTIRAHAT"
+      }).length, 0
+    )
 
   return (
     <>
@@ -214,7 +213,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
                 </tr>
               </thead>
               <tbody>
-                {slots.map((slot) => (
+                {slots.filter((slot) => slot.jam >= "08:00" && slot.jam <= "16:00").map((slot) => (
                   <tr key={slot.id} className="border-b border-border/20 hover:bg-muted/10 transition-colors">
                     <td className="px-3 py-1.5 font-bold text-xs text-muted-foreground sticky left-0 bg-card z-10 border-r border-border/20">
                       {slot.jam}

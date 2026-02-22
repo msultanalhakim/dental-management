@@ -278,7 +278,7 @@ export async function upsertWeeklySlot(slot: WeeklySlot) {
   await supabase.from("weekly_slots").upsert({
     id: slot.id, jam: slot.jam,
     senin: slot.senin, selasa: slot.selasa, rabu: slot.rabu,
-    kamis: slot.kamis, jumat: slot.jumat, sabtu: slot.sabtu, minggu: slot.minggu,
+    kamis: slot.kamis, jumat: slot.jumat,
   })
 }
 
