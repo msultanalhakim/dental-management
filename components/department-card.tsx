@@ -356,6 +356,26 @@ interface PatientTableProps {
   onOpenWA: (phone: string, name: string) => void
   onOpenPasienList: (patient: Patient) => void
   onReorder?: (newPatients: Patient[]) => void
+  searchQuery?: string
+}
+
+// ─── Highlight matching text ──────────────────────────────────────────────────
+
+function HighlightText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <span className="font-bold text-foreground text-sm">{text}</span>
+  const lowerText = text.toLowerCase()
+  const lowerQ = query.toLowerCase()
+  const idx = lowerText.indexOf(lowerQ)
+  if (idx === -1) return <span className="font-bold text-foreground text-sm">{text}</span>
+  return (
+    <span className="font-bold text-foreground text-sm">
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 text-yellow-900 rounded px-0.5 not-italic font-extrabold">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </span>
+  )
 }
 
 // ─── Sortable Row ──────────────────────────────────────────────────────────────
@@ -368,11 +388,12 @@ interface SortableRowProps {
   onOpenPhotos: (patient: Patient) => void
   onOpenWA: (phone: string, name: string) => void
   onOpenPasienList: (patient: Patient) => void
+  searchQuery?: string
 }
 
 function SortableRow({
   patient, onStatusChange, onEditPatient, onDeletePatient,
-  onOpenPhotos, onOpenWA, onOpenPasienList,
+  onOpenPhotos, onOpenWA, onOpenPasienList, searchQuery = "",
 }: SortableRowProps) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -422,7 +443,7 @@ function SortableRow({
           >
             <GripVertical className="h-4 w-4" />
           </button>
-          <span className="font-bold text-foreground text-sm">{patient.requirement}</span>
+          <HighlightText text={patient.requirement} query={searchQuery} />
         </div>
       </td>
 
@@ -506,7 +527,7 @@ function SortableRow({
 
 function PatientTable({
   patients, onStatusChange, onEditPatient, onDeletePatient, onOpenPhotos, onOpenWA, onOpenPasienList,
-  onReorder,
+  onReorder, searchQuery = "",
 }: PatientTableProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -549,6 +570,7 @@ function PatientTable({
                   onOpenPhotos={onOpenPhotos}
                   onOpenWA={onOpenWA}
                   onOpenPasienList={onOpenPasienList}
+                  searchQuery={searchQuery}
                 />
               ))}
             </tbody>
@@ -565,9 +587,10 @@ interface DepartmentCardProps {
   department: Department
   onUpdate: (department: Department) => void
   onDeleteDepartment: () => void
+  searchQuery?: string
 }
 
-export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: DepartmentCardProps) {
+export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "" }: DepartmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(
     new Set(department.subDepartments?.map((s) => s.id) || [])
@@ -606,6 +629,11 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
   const totalPatients = allPatients.length
   const completedPatients = calcCompleted(allPatients)
   const weightedProgress = calcWeightedProgress(allPatients)
+
+  // Filter patients by searchQuery (requirement match)
+  const q = searchQuery.trim().toLowerCase()
+  const filterPatients = (patients: Patient[]) =>
+    q ? patients.filter((p) => p.requirement.toLowerCase().includes(q)) : patients
 
   // Trigger celebration when dept hits 100%
   useEffect(() => {
@@ -908,7 +936,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                           </div>
                         ) : (
                           <PatientTable
-                            patients={sub.patients}
+                            patients={filterPatients(sub.patients)}
                             onStatusChange={(pid, s) => handleStatusChange(pid, s, sub.id)}
                             onEditPatient={(p) => handleEditPatient(p, sub.id)}
                             onDeletePatient={(pid) => handleDeletePatient(pid, sub.id)}
@@ -916,6 +944,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                             onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                             onOpenPasienList={(p) => handleOpenPasienList(p, sub.id)}
                             onReorder={(newList) => handleReorderPatients(newList, sub.id)}
+                            searchQuery={q}
                           />
                         )
                       )}
@@ -942,7 +971,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
               </div>
             ) : (
               <PatientTable
-                patients={department.patients}
+                patients={filterPatients(department.patients)}
                 onStatusChange={(pid, s) => handleStatusChange(pid, s)}
                 onEditPatient={(p) => handleEditPatient(p)}
                 onDeletePatient={(pid) => handleDeletePatient(pid)}
@@ -950,6 +979,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                 onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                 onOpenPasienList={(p) => handleOpenPasienList(p)}
                 onReorder={(newList) => handleReorderPatients(newList)}
+                searchQuery={q}
               />
             )}
           </CardContent>

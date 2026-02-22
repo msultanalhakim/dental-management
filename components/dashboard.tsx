@@ -645,8 +645,17 @@ export function Dashboard({ onLogout }: DashboardProps) {
   }, [])
 
   const filteredDepartments = useMemo(() => {
-    if (!searchDept.trim()) return departments
-    return departments.filter((d) => d.name.toLowerCase().includes(searchDept.toLowerCase()))
+    const q = searchDept.trim().toLowerCase()
+    if (!q) return departments
+    return departments.filter((d) => {
+      // Match department name
+      if (d.name.toLowerCase().includes(q)) return true
+      // Match any requirement in direct patients
+      if (d.patients.some((p) => p.requirement.toLowerCase().includes(q))) return true
+      // Match any requirement in sub-department patients
+      if (d.subDepartments?.some((s) => s.patients.some((p) => p.requirement.toLowerCase().includes(q)))) return true
+      return false
+    })
   }, [departments, searchDept])
 
   const handleUpdateDepartment = async (updated: Department) => {
@@ -711,7 +720,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-card/95 backdrop-blur-lg">
-        <div className="mx-auto flex h-15 max-w-[1600px] items-center justify-between px-4 lg:px-8 py-3">
+        <div className="mx-auto flex h-15 max-w-400 items-center justify-between px-4 lg:px-8 py-3">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary shadow-sm overflow-hidden">
@@ -786,7 +795,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       </header>
 
       {/* Main */}
-      <main className="mx-auto max-w-[1600px] px-4 py-5 lg:px-8">
+      <main className="mx-auto max-w-400 px-4 py-5 lg:px-8">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <svg className="h-8 w-8 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
@@ -806,10 +815,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="Cari departemen..."
+                        placeholder="Cari departemen / requirement..."
                         value={searchDept}
                         onChange={(e) => setSearchDept(e.target.value)}
-                        className="pl-8 h-9 w-52 text-sm bg-card border-border/60 font-medium"
+                        className="pl-8 h-9 w-80 text-sm bg-card border-border/60 font-medium"
                       />
                     </div>
                     <Button
@@ -837,12 +846,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
                       department={dept}
                       onUpdate={handleUpdateDepartment}
                       onDeleteDepartment={() => handleDeleteDepartment(dept.id)}
+                      searchQuery={searchDept.trim()}
                     />
                   ))}
                   {filteredDepartments.length === 0 && searchDept && (
                     <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 bg-card py-16">
                       <Search className="mb-3 h-10 w-10 text-muted-foreground/30" />
-                      <p className="text-muted-foreground font-bold">{`Tidak ditemukan departemen "${searchDept}"`}</p>
+                      <p className="text-muted-foreground font-bold">{`Tidak ditemukan departemen atau requirement "${searchDept}"`}</p>
                     </div>
                   )}
                   {departments.length === 0 && (
