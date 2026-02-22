@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import {
-  Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, ChevronRight, ChevronUp,
+  Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, ChevronRight, GripVertical,
   Users, Layers, Phone, UserPlus, ExternalLink, PartyPopper,
 } from "lucide-react"
 import type { Department, Patient, PatientStatus, PatientEntry, SubDepartment, Photo } from "@/lib/types"
@@ -26,12 +26,20 @@ import {
 } from "@/lib/types"
 import {
   upsertPatient, deletePatient, upsertSubDepartment,
-  upsertDepartment, uploadPhotoBase64, deletePhoto, upsertPatientSortOrder,
+  upsertDepartment, uploadPhotoBase64, deletePhoto, upsertPatientSortOrder, getNextSortOrder,
 } from "@/lib/supabase-queries"
 import { PatientFormModal } from "./patient-form-modal"
 import { PhotoModal } from "./photo-modal"
 import { WhatsAppModal } from "./dashboard"
 import { toast } from "sonner"
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -347,155 +355,207 @@ interface PatientTableProps {
   onOpenPhotos: (patient: Patient) => void
   onOpenWA: (phone: string, name: string) => void
   onOpenPasienList: (patient: Patient) => void
-  onMoveUp?: (patientId: string) => void
-  onMoveDown?: (patientId: string) => void
+  onReorder?: (newPatients: Patient[]) => void
+}
+
+// ─── Sortable Row ──────────────────────────────────────────────────────────────
+
+interface SortableRowProps {
+  patient: Patient
+  onStatusChange: (patientId: string, status: PatientStatus) => void
+  onEditPatient: (patient: Patient) => void
+  onDeletePatient: (patientId: string) => void
+  onOpenPhotos: (patient: Patient) => void
+  onOpenWA: (phone: string, name: string) => void
+  onOpenPasienList: (patient: Patient) => void
+}
+
+function SortableRow({
+  patient, onStatusChange, onEditPatient, onDeletePatient,
+  onOpenPhotos, onOpenWA, onOpenPasienList,
+}: SortableRowProps) {
+  const {
+    attributes, listeners, setNodeRef, transform, transition, isDragging,
+  } = useSortable({ id: patient.id })
+
+  const [isGrabbing, setIsGrabbing] = useState(false)
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? "relative" : undefined,
+  }
+
+  const pasienCount = patient.pasienList.length
+  const firstPasien = patient.pasienList[0]
+  const rowBg = pasienCount === 0
+    ? "bg-[#fdf0ef]"
+    : patient.status === "Selesai"
+    ? "bg-[#e6f5e0]"
+    : ""
+  const rowHover = pasienCount === 0
+    ? "hover:bg-[#f5e5e3]"
+    : patient.status === "Selesai"
+    ? "hover:bg-[#d8f0ce]"
+    : "hover:bg-muted/20"
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`border-b border-border/30 transition-colors ${rowBg} ${rowHover} ${isDragging ? "shadow-lg" : ""}`}
+    >
+      {/* Requirement + Drag Handle */}
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            {...attributes}
+            {...listeners}
+            onMouseDown={() => setIsGrabbing(true)}
+            onMouseUp={() => setIsGrabbing(false)}
+            onMouseLeave={() => setIsGrabbing(false)}
+            className="shrink-0 rounded p-0.5 text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors touch-none"
+            style={{ cursor: isGrabbing ? "grabbing" : "grab" }}
+            title="Geser untuk ubah urutan"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <span className="font-bold text-foreground text-sm">{patient.requirement}</span>
+        </div>
+      </td>
+
+      {/* Status - right aligned */}
+      <td className="px-3 py-2 text-right">
+        <div className="flex justify-end">
+          <Select value={patient.status} onValueChange={(val) => onStatusChange(patient.id, val as PatientStatus)}>
+            <SelectTrigger className="h-auto w-auto border-none bg-transparent shadow-none px-0 text-xs focus:ring-0 justify-end">
+              <StatusBadge status={patient.status} />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}><StatusBadge status={s} /></SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </td>
+
+      {/* Patients column */}
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => onOpenPasienList(patient)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all border ${
+              pasienCount === 0
+                ? "border-dashed border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5"
+                : "border-[#5cb848] bg-[#e6f5e0] text-[#1a6010] hover:bg-[#d0ecc5]"
+            }`}
+          >
+            <Users className="h-3.5 w-3.5 shrink-0" />
+            {pasienCount === 0 ? (
+              <span>Belum ada pasien</span>
+            ) : pasienCount === 1 ? (
+              <span className="truncate max-w-25">{firstPasien?.namaPasien}</span>
+            ) : (
+              <span>{pasienCount} pasien</span>
+            )}
+          </button>
+          {pasienCount > 0 && firstPasien?.nomorTelp && (
+            <button
+              onClick={() => onOpenWA(firstPasien.nomorTelp, firstPasien.namaPasien)}
+              className="flex items-center justify-center rounded-md p-1.5 text-[#1a6010] hover:bg-[#e6f5e0] transition-colors"
+              title={`WA ${firstPasien.namaPasien}`}
+            >
+              <Phone className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </td>
+
+      {/* Photos */}
+      <td className="px-3 py-2 text-center">
+        <button
+          onClick={() => onOpenPhotos(patient)}
+          className="relative inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          <ImageIcon className="h-4 w-4" />
+          {patient.photos.length > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              {patient.photos.length}
+            </span>
+          )}
+        </button>
+      </td>
+
+      {/* Actions */}
+      <td className="px-3 py-2 text-center">
+        <div className="flex items-center justify-center gap-0.5">
+          <button onClick={() => onEditPatient(patient)} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={() => onDeletePatient(patient.id)} className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
 }
 
 function PatientTable({
   patients, onStatusChange, onEditPatient, onDeletePatient, onOpenPhotos, onOpenWA, onOpenPasienList,
-  onMoveUp, onMoveDown,
+  onReorder,
 }: PatientTableProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = patients.findIndex((p) => p.id === active.id)
+    const newIndex = patients.findIndex((p) => p.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(patients, oldIndex, newIndex)
+    onReorder?.(reordered)
+  }
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-t border-b border-border/60 bg-muted/50">
-            <th className="px-3 py-2 text-left font-bold text-muted-foreground text-xs min-w-37.5">Requirement</th>
-            <th className="px-3 py-2 text-right font-bold text-muted-foreground text-xs min-w-45">Status</th>
-            <th className="px-3 py-2 text-left font-bold text-muted-foreground text-xs min-w-37.5">Pasien</th>
-            <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-14">Foto</th>
-            <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-16">Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {patients.map((patient, idx) => {
-            const pasienCount = patient.pasienList.length
-            const firstPasien = patient.pasienList[0]
-            // Row color: merah jika belum ada pasien, hijau jika selesai, normal otherwise
-            const rowBg = pasienCount === 0
-              ? "bg-[#fdf0ef]"
-              : patient.status === "Selesai"
-              ? "bg-[#e6f5e0]"
-              : ""
-            const rowHover = pasienCount === 0
-              ? "hover:bg-[#f5e5e3]"
-              : patient.status === "Selesai"
-              ? "hover:bg-[#d8f0ce]"
-              : "hover:bg-muted/20"
-
-            return (
-              <tr
-                key={patient.id}
-                className={`border-b border-border/30 transition-colors ${rowBg} ${rowHover}`}
-              >
-                {/* Requirement */}
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1">
-                    {/* Subtle reorder arrows */}
-                    {(onMoveUp || onMoveDown) && (
-                      <div className="flex flex-col gap-0 opacity-25 hover:opacity-60 transition-opacity shrink-0">
-                        <button
-                          onClick={() => onMoveUp?.(patient.id)}
-                          disabled={idx === 0}
-                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                          title="Naikan urutan"
-                        >
-                          <ChevronUp className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => onMoveDown?.(patient.id)}
-                          disabled={idx === patients.length - 1}
-                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                          title="Turunkan urutan"
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                    <span className="font-bold text-foreground text-sm">{patient.requirement}</span>
-                  </div>
-                </td>
-
-                {/* Status - right aligned */}
-                <td className="px-3 py-2 text-right">
-                  <div className="flex justify-end">
-                    <Select value={patient.status} onValueChange={(val) => onStatusChange(patient.id, val as PatientStatus)}>
-                      <SelectTrigger className="h-auto w-auto border-none bg-transparent shadow-none px-0 text-xs focus:ring-0 justify-end">
-                        <StatusBadge status={patient.status} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATUS_OPTIONS.map((s) => (
-                          <SelectItem key={s} value={s}><StatusBadge status={s} /></SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </td>
-
-                {/* Patients column */}
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => onOpenPasienList(patient)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all border ${
-                        pasienCount === 0
-                          ? "border-dashed border-border/60 text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5"
-                          : "border-[#5cb848] bg-[#e6f5e0] text-[#1a6010] hover:bg-[#d0ecc5]"
-                      }`}
-                    >
-                      <Users className="h-3.5 w-3.5 shrink-0" />
-                      {pasienCount === 0 ? (
-                        <span>Belum ada pasien</span>
-                      ) : pasienCount === 1 ? (
-                        <span className="truncate max-w-25">{firstPasien?.namaPasien}</span>
-                      ) : (
-                        <span>{pasienCount} pasien</span>
-                      )}
-                    </button>
-                    {pasienCount > 0 && firstPasien?.nomorTelp && (
-                      <button
-                        onClick={() => onOpenWA(firstPasien.nomorTelp, firstPasien.namaPasien)}
-                        className="flex items-center justify-center rounded-md p-1.5 text-[#1a6010] hover:bg-[#e6f5e0] transition-colors"
-                        title={`WA ${firstPasien.namaPasien}`}
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-
-                {/* Photos */}
-                <td className="px-3 py-2 text-center">
-                  <button
-                    onClick={() => onOpenPhotos(patient)}
-                    className="relative inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                  >
-                    <ImageIcon className="h-4 w-4" />
-                    {patient.photos.length > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                        {patient.photos.length}
-                      </span>
-                    )}
-                  </button>
-                </td>
-
-                {/* Actions */}
-                <td className="px-3 py-2 text-center">
-                  <div className="flex items-center justify-center gap-0.5">
-                    <button onClick={() => onEditPatient(patient)} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => onDeletePatient(patient.id)} className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </td>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={patients.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-t border-b border-border/60 bg-muted/50">
+                <th className="px-3 py-2 text-left font-bold text-muted-foreground text-xs min-w-37.5">Requirement</th>
+                <th className="px-3 py-2 text-right font-bold text-muted-foreground text-xs min-w-45">Status</th>
+                <th className="px-3 py-2 text-left font-bold text-muted-foreground text-xs min-w-37.5">Pasien</th>
+                <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-14">Foto</th>
+                <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-16">Aksi</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody>
+              {patients.map((patient) => (
+                <SortableRow
+                  key={patient.id}
+                  patient={patient}
+                  onStatusChange={onStatusChange}
+                  onEditPatient={onEditPatient}
+                  onDeletePatient={onDeletePatient}
+                  onOpenPhotos={onOpenPhotos}
+                  onOpenWA={onOpenWA}
+                  onOpenPasienList={onOpenPasienList}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SortableContext>
+    </DndContext>
   )
 }
 
@@ -581,12 +641,14 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
     let updated: Department
     let patientToSave: Patient
     let subDeptIdForSave: string | undefined
+    let sortOrderForSave: number | undefined
 
     if (targetSubDeptId && hasSubDepartments) {
       if (formMode === "add") {
         const newP: Patient = syncLegacyFields({ id: `p-${Date.now()}`, ...data, pasienList: [], hasPasien: false, namaPasien: "", nomorTelp: "", photos: [] })
         updated = { ...department, subDepartments: department.subDepartments!.map((s) => s.id === targetSubDeptId ? { ...s, patients: [...s.patients, newP] } : s) }
         patientToSave = newP; subDeptIdForSave = targetSubDeptId
+        sortOrderForSave = await getNextSortOrder(department.id, targetSubDeptId)
       } else if (editingPatient) {
         const upd = syncLegacyFields({ ...editingPatient, ...data })
         updated = { ...department, subDepartments: department.subDepartments!.map((s) => s.id === targetSubDeptId ? { ...s, patients: s.patients.map((p) => p.id === editingPatient.id ? upd : p) } : s) }
@@ -597,6 +659,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
         const newP: Patient = syncLegacyFields({ id: `p-${Date.now()}`, ...data, pasienList: [], hasPasien: false, namaPasien: "", nomorTelp: "", photos: [] })
         updated = { ...department, patients: [...department.patients, newP] }
         patientToSave = newP; subDeptIdForSave = undefined
+        sortOrderForSave = await getNextSortOrder(department.id)
       } else if (editingPatient) {
         const upd = syncLegacyFields({ ...editingPatient, ...data })
         updated = { ...department, patients: department.patients.map((p) => p.id === editingPatient.id ? upd : p) }
@@ -606,7 +669,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
     // Optimistic update
     onUpdate(updated)
     try {
-      await upsertPatient(patientToSave, department.id, subDeptIdForSave)
+      await upsertPatient(patientToSave, department.id, subDeptIdForSave, sortOrderForSave)
       toast.success(formMode === "add" ? "Requirement ditambahkan" : "Requirement diperbarui")
     } catch {
       onUpdate(department)  // ROLLBACK to original department state
@@ -736,23 +799,8 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
     toast.success(`Sub-departemen "${newSub.name}" ditambahkan`)
   }
 
-  // Reorder patients
-  const handleReorderPatient = async (patientId: string, direction: "up" | "down", subDeptId?: string) => {
-    const getList = () => {
-      if (subDeptId && hasSubDepartments) {
-        return department.subDepartments!.find((s) => s.id === subDeptId)?.patients ?? []
-      }
-      return department.patients
-    }
-    const list = getList()
-    const idx = list.findIndex((p) => p.id === patientId)
-    if (idx === -1) return
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= list.length) return
-
-    const newList = [...list]
-    ;[newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]]
-
+  // Reorder patients (called after drag-and-drop)
+  const handleReorderPatients = async (newList: Patient[], subDeptId?: string) => {
     let updated: Department
     if (subDeptId && hasSubDepartments) {
       updated = { ...department, subDepartments: department.subDepartments!.map((s) => s.id === subDeptId ? { ...s, patients: newList } : s) }
@@ -761,12 +809,11 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
     }
     onUpdate(updated)
 
-    // Persist new sort_order for both swapped patients
+    // Persist all new sort_order values
     try {
-      await Promise.all([
-        upsertPatientSortOrder(newList[idx].id, idx),
-        upsertPatientSortOrder(newList[swapIdx].id, swapIdx),
-      ])
+      await Promise.all(
+        newList.map((p, idx) => upsertPatientSortOrder(p.id, idx + 1))
+      )
     } catch {
       onUpdate(department)
       toast.error("Gagal menyimpan urutan.")
@@ -868,8 +915,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                             onOpenPhotos={(p) => handleOpenPhotos(p, sub.id)}
                             onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                             onOpenPasienList={(p) => handleOpenPasienList(p, sub.id)}
-                            onMoveUp={(pid) => handleReorderPatient(pid, "up", sub.id)}
-                            onMoveDown={(pid) => handleReorderPatient(pid, "down", sub.id)}
+                            onReorder={(newList) => handleReorderPatients(newList, sub.id)}
                           />
                         )
                       )}
@@ -903,8 +949,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                 onOpenPhotos={(p) => handleOpenPhotos(p)}
                 onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                 onOpenPasienList={(p) => handleOpenPasienList(p)}
-                onMoveUp={(pid) => handleReorderPatient(pid, "up")}
-                onMoveDown={(pid) => handleReorderPatient(pid, "down")}
+                onReorder={(newList) => handleReorderPatients(newList)}
               />
             )}
           </CardContent>

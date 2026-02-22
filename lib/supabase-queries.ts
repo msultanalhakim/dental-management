@@ -120,13 +120,26 @@ export async function deleteSubDepartment(id: string) {
 
 // ─── PATIENTS ────────────────────────────────────────────────────────────────
 
+export async function getNextSortOrder(departmentId: string, subDepartmentId?: string): Promise<number> {
+  let query = supabase.from("patients").select("sort_order").eq("department_id", departmentId)
+  if (subDepartmentId) {
+    query = query.eq("sub_department_id", subDepartmentId)
+  } else {
+    query = query.is("sub_department_id", null)
+  }
+  const { data } = await query
+  if (!data || data.length === 0) return 0
+  return Math.max(...data.map((r) => (r.sort_order ?? 0) as number)) + 1
+}
+
 export async function upsertPatient(
   patient: Patient,
   departmentId: string,
-  subDepartmentId?: string
+  subDepartmentId?: string,
+  sortOrder?: number
 ) {
   const synced = syncLegacyFields(patient)
-  await supabase.from("patients").upsert({
+  const row: Record<string, unknown> = {
     id: synced.id,
     department_id: departmentId,
     sub_department_id: subDepartmentId || null,
@@ -136,7 +149,11 @@ export async function upsertPatient(
     nama_pasien: synced.namaPasien,
     nomor_telp: synced.nomorTelp,
     pasien_list: JSON.stringify(synced.pasienList),
-  })
+  }
+  if (sortOrder !== undefined) {
+    row.sort_order = sortOrder
+  }
+  await supabase.from("patients").upsert(row)
 }
 
 export async function upsertPatientSortOrder(patientId: string, sortOrder: number) {
