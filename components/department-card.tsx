@@ -22,7 +22,7 @@ import {
 import type { Department, Patient, PatientStatus, PatientEntry, SubDepartment, Photo } from "@/lib/types"
 import {
   STATUS_COLORS, STATUS_OPTIONS, STATUS_WEIGHT, getProgressColor,
-  getRowStatusClass, formatPhoneForWA, syncLegacyFields,
+  formatPhoneForWA, syncLegacyFields,
 } from "@/lib/types"
 import {
   upsertPatient, deletePatient, upsertSubDepartment,
@@ -366,16 +366,24 @@ function PatientTable({
         </thead>
         <tbody>
           {patients.map((patient) => {
-            const rowClass = getRowStatusClass(patient.status)
             const pasienCount = patient.pasienList.length
             const firstPasien = patient.pasienList[0]
+            // Row color: merah jika belum ada pasien, hijau jika selesai, normal otherwise
+            const rowBg = pasienCount === 0
+              ? "bg-[#fdf0ef]"
+              : patient.status === "Selesai"
+              ? "bg-[#e6f5e0]"
+              : ""
+            const rowHover = pasienCount === 0
+              ? "hover:bg-[#f5e5e3]"
+              : patient.status === "Selesai"
+              ? "hover:bg-[#d8f0ce]"
+              : "hover:bg-muted/20"
 
             return (
               <tr
                 key={patient.id}
-                className={`border-b border-border/30 transition-colors ${rowClass} ${
-                  !rowClass ? "hover:bg-muted/20" : patient.status === "Selesai" ? "hover:bg-[#d8f0ce]" : "hover:bg-[#f5e5e3]"
-                }`}
+                className={`border-b border-border/30 transition-colors ${rowBg} ${rowHover}`}
               >
                 {/* Requirement */}
                 <td className="px-3 py-2 font-bold text-foreground text-sm">{patient.requirement}</td>
