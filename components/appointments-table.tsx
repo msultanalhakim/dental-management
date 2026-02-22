@@ -253,7 +253,7 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
                     <td className="px-3 py-2 font-bold text-foreground text-xs">{formatDateWithDay(appt.tanggal)}</td>
                     <td className="px-3 py-2 font-semibold text-foreground text-sm">{appt.jam}</td>
                     <td className="px-3 py-2">
-                      <span className="inline-flex items-center rounded-md bg-muted/70 px-2.5 py-1 text-xs font-bold text-foreground">{appt.kubikel}</span>
+                      <span className="inline-flex items-center rounded-md bg-muted/70 px-2 py-1 text-xs font-bold text-foreground">{appt.kubikel}</span>
                     </td>
                     <td className="px-3 py-2 font-medium text-foreground text-sm">{appt.rencanaPerawatan}</td>
                     <td className="px-3 py-2 font-medium text-foreground text-sm">{appt.kasus}</td>

@@ -124,7 +124,7 @@ function CelebrationModal({ open, onClose, deptName }: { open: boolean; onClose:
               Departemen <span className="text-primary">{deptName}</span> selesai!
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Semua requirement telah diselesaikan dengan baik. Kerja keras kalian luar biasa — terus pertahankan!
+              Semua requirement telah diselesaikan dengan baik. Kerja keras kamu luar biasa, terus pertahankan!
             </p>
           </div>
 
@@ -137,7 +137,7 @@ function CelebrationModal({ open, onClose, deptName }: { open: boolean; onClose:
             onClick={onClose}
             className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold px-8 py-2.5"
           >
-            Terima Kasih! 🙏
+            🤍
           </Button>
         </div>
       </DialogContent>
@@ -862,7 +862,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-extrabold text-foreground tracking-tight truncate">{department.name}</h3>
+                  <h2 className="text-base font-extrabold text-foreground tracking-tight truncate">{department.name}</h2>
                   {hasSubDepartments && (
                     <span className="inline-flex items-center gap-1 rounded-md bg-[#e8d6f5] px-1.5 py-0.5 text-[10px] font-extrabold text-[#5a2080] uppercase tracking-wide">
                       <Layers className="h-3 w-3" />Sub
