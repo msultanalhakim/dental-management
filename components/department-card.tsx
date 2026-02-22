@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import {
-  Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, ChevronRight,
+  Plus, Pencil, Trash2, Image as ImageIcon, ChevronDown, ChevronRight, ChevronUp,
   Users, Layers, Phone, UserPlus, ExternalLink, PartyPopper,
 } from "lucide-react"
 import type { Department, Patient, PatientStatus, PatientEntry, SubDepartment, Photo } from "@/lib/types"
@@ -26,7 +26,7 @@ import {
 } from "@/lib/types"
 import {
   upsertPatient, deletePatient, upsertSubDepartment,
-  upsertDepartment, uploadPhotoBase64, deletePhoto,
+  upsertDepartment, uploadPhotoBase64, deletePhoto, upsertPatientSortOrder,
 } from "@/lib/supabase-queries"
 import { PatientFormModal } from "./patient-form-modal"
 import { PhotoModal } from "./photo-modal"
@@ -347,10 +347,13 @@ interface PatientTableProps {
   onOpenPhotos: (patient: Patient) => void
   onOpenWA: (phone: string, name: string) => void
   onOpenPasienList: (patient: Patient) => void
+  onMoveUp?: (patientId: string) => void
+  onMoveDown?: (patientId: string) => void
 }
 
 function PatientTable({
   patients, onStatusChange, onEditPatient, onDeletePatient, onOpenPhotos, onOpenWA, onOpenPasienList,
+  onMoveUp, onMoveDown,
 }: PatientTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -365,7 +368,7 @@ function PatientTable({
           </tr>
         </thead>
         <tbody>
-          {patients.map((patient) => {
+          {patients.map((patient, idx) => {
             const pasienCount = patient.pasienList.length
             const firstPasien = patient.pasienList[0]
             // Row color: merah jika belum ada pasien, hijau jika selesai, normal otherwise
@@ -386,7 +389,32 @@ function PatientTable({
                 className={`border-b border-border/30 transition-colors ${rowBg} ${rowHover}`}
               >
                 {/* Requirement */}
-                <td className="px-3 py-2 font-bold text-foreground text-sm">{patient.requirement}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1">
+                    {/* Subtle reorder arrows */}
+                    {(onMoveUp || onMoveDown) && (
+                      <div className="flex flex-col gap-0 opacity-25 hover:opacity-60 transition-opacity shrink-0">
+                        <button
+                          onClick={() => onMoveUp?.(patient.id)}
+                          disabled={idx === 0}
+                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                          title="Naikan urutan"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => onMoveDown?.(patient.id)}
+                          disabled={idx === patients.length - 1}
+                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                          title="Turunkan urutan"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                    <span className="font-bold text-foreground text-sm">{patient.requirement}</span>
+                  </div>
+                </td>
 
                 {/* Status - right aligned */}
                 <td className="px-3 py-2 text-right">
@@ -708,6 +736,43 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
     toast.success(`Sub-departemen "${newSub.name}" ditambahkan`)
   }
 
+  // Reorder patients
+  const handleReorderPatient = async (patientId: string, direction: "up" | "down", subDeptId?: string) => {
+    const getList = () => {
+      if (subDeptId && hasSubDepartments) {
+        return department.subDepartments!.find((s) => s.id === subDeptId)?.patients ?? []
+      }
+      return department.patients
+    }
+    const list = getList()
+    const idx = list.findIndex((p) => p.id === patientId)
+    if (idx === -1) return
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= list.length) return
+
+    const newList = [...list]
+    ;[newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]]
+
+    let updated: Department
+    if (subDeptId && hasSubDepartments) {
+      updated = { ...department, subDepartments: department.subDepartments!.map((s) => s.id === subDeptId ? { ...s, patients: newList } : s) }
+    } else {
+      updated = { ...department, patients: newList }
+    }
+    onUpdate(updated)
+
+    // Persist new sort_order for both swapped patients
+    try {
+      await Promise.all([
+        upsertPatientSortOrder(newList[idx].id, idx),
+        upsertPatientSortOrder(newList[swapIdx].id, swapIdx),
+      ])
+    } catch {
+      onUpdate(department)
+      toast.error("Gagal menyimpan urutan.")
+    }
+  }
+
   return (
     <>
       <Card className="border-border/60 shadow-sm overflow-hidden">
@@ -803,6 +868,8 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                             onOpenPhotos={(p) => handleOpenPhotos(p, sub.id)}
                             onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                             onOpenPasienList={(p) => handleOpenPasienList(p, sub.id)}
+                            onMoveUp={(pid) => handleReorderPatient(pid, "up", sub.id)}
+                            onMoveDown={(pid) => handleReorderPatient(pid, "down", sub.id)}
                           />
                         )
                       )}
@@ -836,6 +903,8 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment }: Dep
                 onOpenPhotos={(p) => handleOpenPhotos(p)}
                 onOpenWA={(phone, name) => { setWaPhone(phone); setWaName(name); setWaOpen(true) }}
                 onOpenPasienList={(p) => handleOpenPasienList(p)}
+                onMoveUp={(pid) => handleReorderPatient(pid, "up")}
+                onMoveDown={(pid) => handleReorderPatient(pid, "down")}
               />
             )}
           </CardContent>

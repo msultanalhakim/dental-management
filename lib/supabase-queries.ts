@@ -139,6 +139,10 @@ export async function upsertPatient(
   })
 }
 
+export async function upsertPatientSortOrder(patientId: string, sortOrder: number) {
+  await supabase.from("patients").update({ sort_order: sortOrder }).eq("id", patientId)
+}
+
 export async function deletePatient(id: string) {
   // Delete from storage first
   const { data: photos } = await supabase
