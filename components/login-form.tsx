@@ -42,14 +42,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         {/* Logo & branding */}
         <div className="mb-8 flex flex-col items-center">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-lg">
-            <svg viewBox="0 0 32 32" fill="none" className="h-9 w-9" aria-hidden="true">
-              <path
-                d="M16 3C11 3 7 7 7 11c0 2 .5 3.5 1.2 5l2.8 8c.5 1.5 1.5 2 2.5 2s2-.8 2.5-2l.5-1.5.5 1.5c.5 1.2 1.5 2 2.5 2s2-.5 2.5-2l2.8-8C24.5 14.5 25 13 25 11c0-4-4-8-9-8z"
-                fill="currentColor"
-                className="text-primary-foreground"
-                opacity="0.9"
-              />
-            </svg>
+            <img src="/logo.png" alt="Logo" className="h-9 w-9 object-contain" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
             Klinik Gigi
