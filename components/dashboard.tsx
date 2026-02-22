@@ -26,6 +26,7 @@ import {
   fetchDepartments, fetchAppointments, fetchWeeklySlots,
   upsertDepartment, deleteDepartment, upsertWeeklySlot,
 } from "@/lib/supabase-queries"
+import { supabase } from "@/lib/supabase"
 import { DepartmentCard } from "./department-card"
 import { AddDepartmentModal } from "./add-department-modal"
 import { AppointmentsTable } from "./appointments-table"
@@ -38,28 +39,63 @@ interface DashboardProps {
   onLogout: () => void
 }
 
-// ─── Local storage keys ────────────────────────────────────────────────────────
-const BRAND_KEY = "dental_brand"
+// ─── Brand Settings ────────────────────────────────────────────────────────────
 type BrandSettings = {
   title: string
   subtitle: string
-  logoDataUrl: string | null
+  logoUrl: string | null   // public URL from Supabase Storage (or null)
 }
+
 const DEFAULT_BRAND: BrandSettings = {
   title: "Klinik Gigi",
   subtitle: "Manajemen Pasien",
-  logoDataUrl: null,
+  logoUrl: null,
 }
-function loadBrand(): BrandSettings {
-  if (typeof window === "undefined") return DEFAULT_BRAND
+
+async function loadBrand(): Promise<BrandSettings> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "brand")
+    .single()
+  if (!data?.value) return DEFAULT_BRAND
   try {
-    const raw = localStorage.getItem(BRAND_KEY)
-    if (!raw) return DEFAULT_BRAND
-    return { ...DEFAULT_BRAND, ...JSON.parse(raw) }
+    const parsed = JSON.parse(data.value)
+    return { ...DEFAULT_BRAND, ...parsed }
   } catch { return DEFAULT_BRAND }
 }
-function saveBrand(b: BrandSettings) {
-  localStorage.setItem(BRAND_KEY, JSON.stringify(b))
+
+async function saveBrandSettings(b: BrandSettings): Promise<void> {
+  await supabase
+    .from("app_settings")
+    .upsert({ key: "brand", value: JSON.stringify(b) })
+}
+
+async function uploadLogoToStorage(file: File): Promise<string | null> {
+  const ext = file.name.split(".").pop() || "png"
+  const path = `logo/clinic-logo.${ext}`
+
+  const { error } = await supabase.storage
+    .from("patient-photos")   // reuse existing bucket, or create a separate one
+    .upload(path, file, { contentType: file.type, upsert: true })
+
+  if (error) return null
+
+  const { data: { publicUrl } } = supabase.storage
+    .from("patient-photos")
+    .getPublicUrl(path)
+
+  return publicUrl
+}
+
+async function deleteLogoFromStorage(): Promise<void> {
+  // Try both common extensions
+  await supabase.storage.from("patient-photos").remove([
+    "logo/clinic-logo.png",
+    "logo/clinic-logo.jpg",
+    "logo/clinic-logo.jpeg",
+    "logo/clinic-logo.webp",
+  ])
 }
 
 // ─── Excel export: departments ────────────────────────────────────────────────
@@ -105,7 +141,6 @@ async function exportDepartmentsExcel(departments: Department[]) {
   await downloadXlsx(sheets, `departemen_${dateStr}.xlsx`)
   toast.success("Export departemen berhasil diunduh")
 }
-
 
 // ─── Dashboard Reminder ────────────────────────────────────────────────────────
 function DashboardReminder({ weeklySlots }: { weeklySlots: WeeklySlot[] }) {
@@ -252,13 +287,15 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
   open: boolean
   onClose: () => void
   brand: BrandSettings
-  onSaveBrand: (b: BrandSettings) => void
+  onSaveBrand: (b: BrandSettings) => Promise<void>
 }) {
   const [activeSection, setActiveSection] = useState<"brand" | "password">("brand")
   const [title, setTitle] = useState(brand.title)
   const [subtitle, setSubtitle] = useState(brand.subtitle)
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(brand.logoDataUrl)
-  const [logoPreview, setLogoPreview] = useState<string | null>(brand.logoDataUrl)
+  const [logoUrl, setLogoUrl] = useState<string | null>(brand.logoUrl)
+  const [logoPreview, setLogoPreview] = useState<string | null>(brand.logoUrl)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoSaving, setLogoSaving] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   // Password change
@@ -272,31 +309,55 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
 
   useEffect(() => {
     if (open) {
-      setTitle(brand.title); setSubtitle(brand.subtitle)
-      setLogoDataUrl(brand.logoDataUrl); setLogoPreview(brand.logoDataUrl)
+      setTitle(brand.title)
+      setSubtitle(brand.subtitle)
+      setLogoUrl(brand.logoUrl)
+      setLogoPreview(brand.logoUrl)
+      setLogoFile(null)
       setActiveSection("brand")
       setCurrentPw(""); setNewPw(""); setConfirmPw("")
     }
   }, [open, brand])
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran logo maks 5 MB"); return }
+    setLogoFile(file)
+    // Show local preview immediately
     const reader = new FileReader()
-    reader.onloadend = () => {
-      setLogoDataUrl(reader.result as string)
-      setLogoPreview(reader.result as string)
-    }
+    reader.onloadend = () => setLogoPreview(reader.result as string)
     reader.readAsDataURL(file)
     e.target.value = ""
   }
 
-  const handleSaveBrand = () => {
+  const handleSaveBrand = async () => {
     if (!title.trim()) { toast.error("Nama klinik tidak boleh kosong"); return }
-    onSaveBrand({ title: title.trim(), subtitle: subtitle.trim(), logoDataUrl })
-    toast.success("Tampilan berhasil disimpan")
-    onClose()
+    setLogoSaving(true)
+    try {
+      let finalLogoUrl = logoUrl
+
+      // Upload new logo to storage if a new file was selected
+      if (logoFile) {
+        const uploaded = await uploadLogoToStorage(logoFile)
+        if (!uploaded) { toast.error("Gagal mengunggah logo"); setLogoSaving(false); return }
+        finalLogoUrl = uploaded
+      }
+
+      // If logo was cleared (preview null, no new file)
+      if (!logoPreview && !logoFile) {
+        await deleteLogoFromStorage()
+        finalLogoUrl = null
+      }
+
+      await onSaveBrand({ title: title.trim(), subtitle: subtitle.trim(), logoUrl: finalLogoUrl })
+      toast.success("Tampilan berhasil disimpan")
+      onClose()
+    } catch {
+      toast.error("Gagal menyimpan tampilan")
+    } finally {
+      setLogoSaving(false)
+    }
   }
 
   const handleChangePassword = async () => {
@@ -369,19 +430,35 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
                     )}
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => logoInputRef.current?.click()} className="h-9 gap-2 border-border font-bold">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="h-9 gap-2 border-border font-bold"
+                      disabled={logoSaving}
+                    >
                       <Upload className="h-3.5 w-3.5" />
-                      Upload Foto
+                      {logoFile ? "Ganti File" : "Upload Foto"}
                     </Button>
                     {logoPreview && (
-                      <button onClick={() => { setLogoDataUrl(null); setLogoPreview(null) }} className="text-xs text-destructive font-bold hover:underline text-left">
+                      <button
+                        onClick={() => { setLogoPreview(null); setLogoUrl(null); setLogoFile(null) }}
+                        className="text-xs text-destructive font-bold hover:underline text-left"
+                        disabled={logoSaving}
+                      >
                         Hapus foto
                       </button>
+                    )}
+                    {logoFile && (
+                      <p className="text-xs text-[#1a6010] font-medium">
+                        ✓ {logoFile.name} — akan diupload saat simpan
+                      </p>
                     )}
                     <p className="text-xs text-muted-foreground">PNG, JPG — maks 5 MB</p>
                   </div>
                 </div>
-                <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
+                <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoSelect} className="hidden" />
               </div>
 
               {/* Title */}
@@ -430,8 +507,12 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
                 </div>
               </div>
 
-              <Button onClick={handleSaveBrand} className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold h-10">
-                Simpan Tampilan
+              <Button
+                onClick={handleSaveBrand}
+                disabled={logoSaving}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold h-10"
+              >
+                {logoSaving ? "Menyimpan..." : "Simpan Tampilan"}
               </Button>
             </div>
           )}
@@ -534,19 +615,21 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [brand, setBrand] = useState<BrandSettings>(DEFAULT_BRAND)
   const [exportDeptConfirmOpen, setExportDeptConfirmOpen] = useState(false)
 
-  // Load brand from localStorage on mount
-  useEffect(() => { setBrand(loadBrand()) }, [])
-
-  // Load data from Supabase on mount
+  // Load all data from Supabase on mount
   useEffect(() => {
     async function loadAll() {
       setLoading(true)
       try {
-        const [depts, appts, slots] = await Promise.all([
-          fetchDepartments(), fetchAppointments(), fetchWeeklySlots(),
+        const [depts, appts, slots, brandData] = await Promise.all([
+          fetchDepartments(),
+          fetchAppointments(),
+          fetchWeeklySlots(),
+          loadBrand(),
         ])
         if (depts.length > 0) setDepartments(depts)
         if (appts.length > 0) setAppointments(appts)
+        setBrand(brandData)
+
         if (slots.length >= DEFAULT_WEEKLY.length) {
           setWeeklySlots(slots)
         } else if (slots.length === 0) {
@@ -593,7 +676,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
   }
 
   const handleAddDepartment = async (name: string, hasSub: boolean) => {
-    const newDept: Department = { id: `dept-${Date.now()}`, name, patients: [], hasSubDepartments: hasSub, subDepartments: hasSub ? [] : undefined }
+    const newDept: Department = {
+      id: `dept-${Date.now()}`,
+      name,
+      patients: [],
+      hasSubDepartments: hasSub,
+      subDepartments: hasSub ? [] : undefined,
+    }
     setDepartments((prev) => {
       const snapshot = prev
       const next = [...prev, newDept]
@@ -607,7 +696,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
     })
   }
 
-  const handleSaveBrand = (b: BrandSettings) => { setBrand(b); saveBrand(b) }
+  const handleSaveBrand = async (b: BrandSettings) => {
+    await saveBrandSettings(b)
+    setBrand(b)
+  }
 
   const tabs: { key: TabKey; label: string; icon: React.ElementType }[] = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -619,12 +711,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-card/95 backdrop-blur-lg">
-        <div className="mx-auto flex h-15 max-w-400 items-center justify-between px-4 lg:px-8 py-3">
+        <div className="mx-auto flex h-15 max-w-[1600px] items-center justify-between px-4 lg:px-8 py-3">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary shadow-sm overflow-hidden">
-              {brand.logoDataUrl ? (
-                <img src={brand.logoDataUrl} alt="logo" className="h-full w-full object-cover" />
+              {brand.logoUrl ? (
+                <img src={brand.logoUrl} alt="logo" className="h-full w-full object-cover" />
               ) : (
                 <ToothLogo className="h-5 w-5" />
               )}
@@ -694,7 +786,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       </header>
 
       {/* Main */}
-      <main className="mx-auto max-w-400 px-4 py-5 lg:px-8">
+      <main className="mx-auto max-w-[1600px] px-4 py-5 lg:px-8">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <svg className="h-8 w-8 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
@@ -797,7 +889,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border text-foreground font-bold">Batal</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => exportDepartmentsExcel(departments).catch(() => toast.error('Gagal export'))}
+              onClick={() => exportDepartmentsExcel(departments).catch(() => toast.error("Gagal export"))}
               className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold"
             >
               <Download className="h-4 w-4 mr-1.5" />Ya, Export
