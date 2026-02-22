@@ -27,7 +27,7 @@ import { upsertAppointment, deleteAppointment } from "@/lib/supabase-queries"
 import { WhatsAppModal } from "./dashboard"
 import { toast } from "sonner"
 
-const PAGE_SIZES = [20, 50, 100] as const
+const PAGE_SIZES = [10, "All"] as const
 type PageSize = typeof PAGE_SIZES[number]
 
 interface AppointmentsTableProps {
@@ -79,7 +79,7 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
   const [waOpen, setWaOpen] = useState(false)
   const [waPhone, setWaPhone] = useState("")
   const [waName, setWaName] = useState("")
-  const [pageSize, setPageSize] = useState<PageSize>(20)
+  const [pageSize, setPageSize] = useState<PageSize>(10)
   const [currentPage, setCurrentPage] = useState(1)
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false)
 
@@ -106,9 +106,11 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
     )
   }, [sorted, searchTerm])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const isAll = pageSize === "All"
+  const effectivePageSize = isAll ? filtered.length || 1 : pageSize
+  const totalPages = Math.max(1, Math.ceil(filtered.length / effectivePageSize))
   const page = Math.min(currentPage, totalPages)
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const paged = isAll ? filtered : filtered.slice((page - 1) * effectivePageSize, page * effectivePageSize)
   const checkedCount = appointments.filter((a) => a.checklist).length
 
   const openAdd = () => {
@@ -306,33 +308,40 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
               </div>
             </div>
 
-            {/* Page nav */}
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-muted-foreground font-medium mr-1">
-                {filtered.length === 0 ? "0 data" : `${(page-1)*pageSize+1}–${Math.min(page*pageSize, filtered.length)} / ${filtered.length}`}
+            {/* Page nav — hidden when showing All */}
+            {!isAll && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground font-medium mr-1">
+                  {filtered.length === 0 ? "0 data" : `${(page-1)*effectivePageSize+1}–${Math.min(page*effectivePageSize, filtered.length)} / ${filtered.length}`}
+                </span>
+                <button onClick={() => setCurrentPage(1)} disabled={page === 1} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                {pageNums.map((n, i) =>
+                  n < 0 ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-muted-foreground">…</span>
+                  ) : (
+                    <button
+                      key={n}
+                      onClick={() => setCurrentPage(n)}
+                      className={`rounded-md min-w-7 h-7 px-1 text-xs font-bold transition-all ${
+                        page === n ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+                <button onClick={() => setCurrentPage(totalPages)} disabled={page === totalPages} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            {isAll && (
+              <span className="text-xs font-medium text-muted-foreground">
+                Menampilkan semua {filtered.length} data
               </span>
-              <button onClick={() => setCurrentPage(1)} disabled={page === 1} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              {pageNums.map((n, i) =>
-                n < 0 ? (
-                  <span key={`ellipsis-${i}`} className="px-1 text-muted-foreground">…</span>
-                ) : (
-                  <button
-                    key={n}
-                    onClick={() => setCurrentPage(n)}
-                    className={`rounded-md min-w-7 h-7 px-1 text-xs font-bold transition-all ${
-                      page === n ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                    }`}
-                  >
-                    {n}
-                  </button>
-                )
-              )}
-              <button onClick={() => setCurrentPage(totalPages)} disabled={page === totalPages} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -41,9 +41,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       <div className="w-full max-w-sm">
         {/* Logo & branding */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-32 w-32 items-center justify-center rounded-2xl">
-            <img src="/logo.png" alt="Logo" className="h-9 w-9 object-contain" />
-          </div>
+          <img src="/logo.png" alt="Logo" className="mb-4 h-32 w-32 object-contain" />
           <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
             Klinik Gigi
           </h1>
