@@ -357,8 +357,8 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
             }`}>
               <Lock className="h-3.5 w-3.5 shrink-0" />
               {isPastWeek
-                ? "Rekam jejak — minggu ini sudah lewat dan tidak dapat diedit."
-                : "Minggu mendatang — belum dapat diedit sebelum minggunya tiba."}
+                ? "Rekam jejak, minggu ini sudah lewat dan tidak dapat diedit."
+                : "Minggu mendatang, belum dapat diedit sebelum minggunya tiba."}
             </div>
           )}
 
