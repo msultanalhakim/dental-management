@@ -47,14 +47,12 @@ export async function fetchDepartments(): Promise<Department[]> {
   }
 
   const toPatient = (row: Record<string, unknown>): Patient => {
-    // Parse pasienList from JSON or build from legacy fields
     let pasienList: PatientEntry[] = []
     try {
       if (row.pasien_list) {
         pasienList = JSON.parse(row.pasien_list as string)
       }
     } catch { /* empty */ }
-    // Fallback: if pasienList empty but legacy fields exist, migrate
     if (pasienList.length === 0 && row.has_pasien && row.nama_pasien) {
       pasienList = [{
         id: `pe-${row.id}`,
@@ -161,7 +159,6 @@ export async function upsertPatientSortOrder(patientId: string, sortOrder: numbe
 }
 
 export async function deletePatient(id: string) {
-  // Delete from storage first
   const { data: photos } = await supabase
     .from("patient_photos")
     .select("storage_path")
@@ -182,7 +179,6 @@ export async function uploadPhotoBase64(patientId: string, base64: string): Prom
   const res = await fetch(base64)
   const blob = await res.blob()
 
-  // 5MB limit
   if (blob.size > 5 * 1024 * 1024) {
     throw new Error("Ukuran foto maksimum 5 MB")
   }
@@ -260,25 +256,40 @@ export async function deleteAppointment(id: string) {
 
 // ─── WEEKLY SLOTS ─────────────────────────────────────────────────────────────
 
-export async function fetchWeeklySlots(): Promise<WeeklySlot[]> {
-  const { data, error } = await supabase
+export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> {
+  let query = supabase
     .from("weekly_slots")
     .select("*")
     .order("sort_order", { ascending: true })
+
+  if (weekKey) {
+    query = query.eq("week_key", weekKey)
+  }
+
+  const { data, error } = await query
   if (error || !data) return []
   return data.map((row) => ({
-    id: row.id, jam: row.jam,
-    senin: row.senin || "", selasa: row.selasa || "", rabu: row.rabu || "",
-    kamis: row.kamis || "", jumat: row.jumat || "", sabtu: row.sabtu || "",
-    minggu: row.minggu || "",
+    id: row.id,
+    jam: row.jam,
+    weekKey: row.week_key ?? weekKey ?? "",
+    senin: row.senin || "",
+    selasa: row.selasa || "",
+    rabu: row.rabu || "",
+    kamis: row.kamis || "",
+    jumat: row.jumat || "",
   }))
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot) {
+export async function upsertWeeklySlot(slot: WeeklySlot & { weekKey: string }) {
   await supabase.from("weekly_slots").upsert({
-    id: slot.id, jam: slot.jam,
-    senin: slot.senin, selasa: slot.selasa, rabu: slot.rabu,
-    kamis: slot.kamis, jumat: slot.jumat,
+    id: slot.id,
+    jam: slot.jam,
+    week_key: slot.weekKey,
+    senin: slot.senin,
+    selasa: slot.selasa,
+    rabu: slot.rabu,
+    kamis: slot.kamis,
+    jumat: slot.jumat,
   })
 }
 
@@ -286,7 +297,6 @@ export async function upsertWeeklySlot(slot: WeeklySlot) {
 
 export async function changePassword(newPassword: string): Promise<void> {
   const hash = await bcryptjs.hash(newPassword, 10)
-  // Update the first (and only) admin_auth row
   const { data } = await supabase.from("admin_auth").select("id").limit(1).single()
   if (data) {
     await supabase.from("admin_auth").update({ password_hash: hash }).eq("id", data.id)
