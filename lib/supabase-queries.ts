@@ -140,9 +140,11 @@ export async function fetchApprovedUsers(): Promise<AppUser[]> {
 }
 
 export async function approveUser(id: string): Promise<void> {
+  // Ikuti flag global saat approve agar user baru langsung dapat setting yang benar
+  const globalPhoto = await getGlobalPhotoPermission()
   const { error } = await supabase
     .from("app_users")
-    .update({ status: "approved" })
+    .update({ status: "approved", can_upload_photo: globalPhoto })
     .eq("id", id)
   if (error) throw error
 }
@@ -245,23 +247,34 @@ export async function updateUser(
 }
 
 // Set can_upload_photo untuk SEMUA user non-admin sekaligus
+// Simpan state global di app_settings (key: global:photo_permission)
+// sehingga tidak bergantung pada jumlah user yang terdaftar
+const GLOBAL_PHOTO_KEY = "global:photo_permission"
+
 export async function setPhotoPermissionForAll(enabled: boolean): Promise<void> {
-  const { error } = await supabase
+  // 1. Simpan flag global di app_settings
+  const { error: settingsError } = await supabase
+    .from("app_settings")
+    .upsert({ key: GLOBAL_PHOTO_KEY, value: enabled ? "true" : "false" })
+  if (settingsError) throw settingsError
+
+  // 2. Update kolom can_upload_photo semua user non-admin yang sudah ada
+  const { error: usersError } = await supabase
     .from("app_users")
     .update({ can_upload_photo: enabled })
     .neq("role", "admin")
-  if (error) throw error
+  if (usersError) throw usersError
 }
 
-// Cek apakah saat ini semua user non-admin punya izin foto
 export async function getGlobalPhotoPermission(): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("can_upload_photo")
-    .neq("role", "admin")
-  if (error || !data || data.length === 0) return true
-  // true jika semua user non-admin punya izin
-  return data.every((row) => row.can_upload_photo !== false)
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", GLOBAL_PHOTO_KEY)
+    .maybeSingle()
+  // Default true jika belum pernah diset
+  if (!data) return true
+  return data.value !== "false"
 }
 
 export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
