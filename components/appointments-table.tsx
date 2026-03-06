@@ -34,6 +34,7 @@ interface AppointmentsTableProps {
   appointments: Appointment[]
   onUpdate: (appointments: Appointment[]) => void
   departments: Department[]
+  userId: string
 }
 
 async function exportAppointmentsExcel(rows: Appointment[]) {
@@ -70,7 +71,7 @@ async function exportAppointmentsExcel(rows: Appointment[]) {
   toast.success("Export berhasil diunduh")
 }
 
-export function AppointmentsTable({ appointments, onUpdate, departments }: AppointmentsTableProps) {
+export function AppointmentsTable({ appointments, onUpdate, departments, userId }: AppointmentsTableProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -131,7 +132,7 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
       const updated = { ...editingAppt, ...formData }
       onUpdate(appointments.map((a) => a.id === editingAppt.id ? updated : a))
       try {
-        await upsertAppointment(updated)
+        await upsertAppointment(updated, userId)
         setFormOpen(false)
         toast.success("Appointment diperbarui")
       } catch {
@@ -142,7 +143,7 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
       const newAppt: Appointment = { id: `a-${Date.now()}`, ...formData, checklist: false }
       onUpdate([...appointments, newAppt])
       try {
-        await upsertAppointment(newAppt)
+        await upsertAppointment(newAppt, userId)
         setFormOpen(false)
         toast.success("Appointment ditambahkan")
       } catch {
@@ -173,7 +174,7 @@ export function AppointmentsTable({ appointments, onUpdate, departments }: Appoi
     onUpdate(updated)
     const appt = updated.find((a) => a.id === id)
     if (appt) {
-      try { await upsertAppointment(appt) } catch {
+      try { await upsertAppointment(appt, userId) } catch {
         onUpdate(snapshot)
         toast.error("Gagal menyimpan status. Perubahan dibatalkan.")
       }

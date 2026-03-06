@@ -25,6 +25,7 @@ interface WeeklyPlanningProps {
   slots: WeeklySlot[]          // current week's slots (template + data)
   onUpdate: (slots: WeeklySlot[]) => void
   departments: Department[]
+  userId: string
 }
 
 type DayKey = "senin" | "selasa" | "rabu" | "kamis" | "jumat"
@@ -120,7 +121,7 @@ function blankWeek(template: WeeklySlot[]): WeeklySlot[] {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningProps) {
+export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyPlanningProps) {
   const currentWeekKey = todayWeekKey()
   const currentMonday  = getMondayOf(new Date())
 
@@ -146,7 +147,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
     if (historyCache[viewWeekKey]) return   // already loaded
 
     setLoadingWeek(true)
-    fetchWeeklySlots(viewWeekKey)
+    fetchWeeklySlots(userId, viewWeekKey)
       .then((fetched: WeeklySlot[]) => {
         setHistoryCache((c) => ({ ...c, [viewWeekKey]: fetched }))
       })
@@ -219,7 +220,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
       return false
     }
     try {
-      await upsertWeeklySlot(target, currentWeekKey)
+      await upsertWeeklySlot(target, currentWeekKey, userId)
       return true
     } catch {
       onUpdate(snapshot)

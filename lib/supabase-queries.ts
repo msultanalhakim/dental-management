@@ -3,7 +3,6 @@ import type {
   Department, Patient, PatientEntry, SubDepartment,
   Appointment, WeeklySlot, Photo, AppUser,
 } from "./types"
-import { syncLegacyFields } from "./types"
 import bcryptjs from "bcryptjs"
 
 // ─── ADMIN AUTH (password tunggal lama — tetap dipertahankan untuk backward compat) ──
@@ -227,7 +226,8 @@ export async function changeUserPassword(id: string, newPassword: string): Promi
 
 // ─── DEPARTMENTS ─────────────────────────────────────────────────────────────
 
-export async function fetchDepartments(): Promise<Department[]> {
+export async function fetchDepartments(userId: string): Promise<Department[]> {
+  // departments & sub_departments & patients = global (shared semua user)
   const { data: depts, error } = await supabase
     .from("departments")
     .select("*")
@@ -244,7 +244,23 @@ export async function fetchDepartments(): Promise<Department[]> {
     .select("*")
     .order("sort_order", { ascending: true })
 
-  const { data: photos } = await supabase.from("patient_photos").select("*")
+  const { data: photos } = await supabase
+    .from("patient_photos")
+    .select("*")
+
+  // pasienList per-user: satu row per (patient_id, user_id)
+  const { data: userPatientData } = await supabase
+    .from("patient_user_data")
+    .select("patient_id, pasien_list")
+    .eq("user_id", userId)
+
+  // Build lookup: patient_id → pasienList milik user ini
+  const userPasienMap: Record<string, PatientEntry[]> = {}
+  for (const row of userPatientData || []) {
+    try {
+      userPasienMap[row.patient_id] = JSON.parse(row.pasien_list)
+    } catch { userPasienMap[row.patient_id] = [] }
+  }
 
   const photosByPatient: Record<string, Photo[]> = {}
   for (const ph of photos || []) {
@@ -257,19 +273,8 @@ export async function fetchDepartments(): Promise<Department[]> {
   }
 
   const toPatient = (row: Record<string, unknown>): Patient => {
-    let pasienList: PatientEntry[] = []
-    try {
-      if (row.pasien_list) {
-        pasienList = JSON.parse(row.pasien_list as string)
-      }
-    } catch { /* empty */ }
-    if (pasienList.length === 0 && row.has_pasien && row.nama_pasien) {
-      pasienList = [{
-        id: `pe-${row.id}`,
-        namaPasien: row.nama_pasien as string,
-        nomorTelp: row.nomor_telp as string,
-      }]
-    }
+    // Pakai pasienList milik user ini (default kosong jika belum ada)
+    const pasienList: PatientEntry[] = userPasienMap[row.id as string] ?? []
     const first = pasienList[0]
     return {
       id: row.id as string,
@@ -277,8 +282,8 @@ export async function fetchDepartments(): Promise<Department[]> {
       status: row.status as Patient["status"],
       pasienList,
       hasPasien: pasienList.length > 0,
-      namaPasien: first?.namaPasien ?? (row.nama_pasien as string ?? ""),
-      nomorTelp: first?.nomorTelp ?? (row.nomor_telp as string ?? ""),
+      namaPasien: first?.namaPasien ?? "",
+      nomorTelp: first?.nomorTelp ?? "",
       photos: photosByPatient[row.id as string] || [],
     }
   }
@@ -340,28 +345,39 @@ export async function getNextSortOrder(departmentId: string, subDepartmentId?: s
   return Math.max(...data.map((r) => (r.sort_order ?? 0) as number)) + 1
 }
 
+// Upsert requirement/status ke tabel patients (global, shared semua user)
 export async function upsertPatient(
   patient: Patient,
   departmentId: string,
   subDepartmentId?: string,
   sortOrder?: number
 ) {
-  const synced = syncLegacyFields(patient)
   const row: Record<string, unknown> = {
-    id: synced.id,
+    id: patient.id,
     department_id: departmentId,
     sub_department_id: subDepartmentId || null,
-    requirement: synced.requirement,
-    status: synced.status,
-    has_pasien: synced.hasPasien,
-    nama_pasien: synced.namaPasien,
-    nomor_telp: synced.nomorTelp,
-    pasien_list: JSON.stringify(synced.pasienList),
+    requirement: patient.requirement,
+    status: patient.status,
   }
-  if (sortOrder !== undefined) {
-    row.sort_order = sortOrder
-  }
+  if (sortOrder !== undefined) row.sort_order = sortOrder
   await supabase.from("patients").upsert(row)
+}
+
+// Simpan pasienList per-user ke tabel patient_user_data
+export async function upsertPatientUserData(
+  patientId: string,
+  userId: string,
+  pasienList: PatientEntry[]
+) {
+  await supabase.from("patient_user_data").upsert(
+    {
+      patient_id: patientId,
+      user_id: userId,
+      pasien_list: JSON.stringify(pasienList),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "patient_id,user_id" }
+  )
 }
 
 export async function upsertPatientSortOrder(patientId: string, sortOrder: number) {
@@ -425,10 +441,11 @@ export async function deletePhoto(photo: Photo) {
 
 // ─── APPOINTMENTS ─────────────────────────────────────────────────────────────
 
-export async function fetchAppointments(): Promise<Appointment[]> {
+export async function fetchAppointments(userId: string): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
+    .eq("user_id", userId)
     .order("tanggal", { ascending: false })
   if (error || !data) return []
   return data.map((row) => ({
@@ -445,9 +462,10 @@ export async function fetchAppointments(): Promise<Appointment[]> {
   }))
 }
 
-export async function upsertAppointment(appt: Appointment) {
+export async function upsertAppointment(appt: Appointment, userId: string) {
   await supabase.from("appointments").upsert({
     id: appt.id,
+    user_id: userId,
     tanggal: appt.tanggal,
     jam: appt.jam,
     kubikel: appt.kubikel,
@@ -466,10 +484,11 @@ export async function deleteAppointment(id: string) {
 
 // ─── WEEKLY SLOTS ─────────────────────────────────────────────────────────────
 
-export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> {
+export async function fetchWeeklySlots(userId: string, weekKey?: string): Promise<WeeklySlot[]> {
   let query = supabase
     .from("weekly_slots")
     .select("*")
+    .eq("user_id", userId)
     .order("sort_order", { ascending: true })
 
   if (weekKey) {
@@ -490,9 +509,10 @@ export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> 
   }))
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string) {
+export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string, userId: string) {
   await supabase.from("weekly_slots").upsert({
     id: slot.id,
+    user_id: userId,
     jam: slot.jam,
     week_key: weekKey,
     senin: slot.senin,

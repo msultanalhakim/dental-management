@@ -679,9 +679,9 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
       setLoading(true)
       try {
         const [depts, appts, slots, brandData] = await Promise.all([
-          fetchDepartments(),
-          fetchAppointments(),
-          fetchWeeklySlots(),
+          fetchDepartments(currentUser.email),
+          fetchAppointments(currentUser.email),
+          fetchWeeklySlots(currentUser.email),
           loadBrand(currentUser.email),
         ])
         if (depts.length > 0) setDepartments(depts)
@@ -694,7 +694,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
           setWeeklySlots(DEFAULT_WEEKLY)
           const monday = new Date(); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
           const weekKey = monday.toISOString().slice(0, 10)
-          Promise.all(DEFAULT_WEEKLY.map((s) => upsertWeeklySlot(s, weekKey))).catch(() => null)
+          Promise.all(DEFAULT_WEEKLY.map((s) => upsertWeeklySlot(s, weekKey, currentUser.email))).catch(() => null)
         } else {
           console.warn(`Weekly slots: DB has ${slots.length} rows (expected ${DEFAULT_WEEKLY.length}). Using defaults.`)
           setWeeklySlots(DEFAULT_WEEKLY)
@@ -923,6 +923,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
                       onDeleteDepartment={() => handleDeleteDepartment(dept.id)}
                       searchQuery={searchDept.trim()}
                       isAdmin={isAdmin}
+                      userId={currentUser.email}
                     />
                   ))}
                   {filteredDepartments.length === 0 && searchDept && (
@@ -947,11 +948,11 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
             )}
 
             {activeTab === "appointments" && (
-              <AppointmentsTable appointments={appointments} onUpdate={setAppointments} departments={departments} />
+              <AppointmentsTable appointments={appointments} onUpdate={setAppointments} departments={departments} userId={currentUser.email} />
             )}
 
             {activeTab === "weekly" && (
-              <WeeklyPlanning slots={weeklySlots} onUpdate={setWeeklySlots} departments={departments} />
+              <WeeklyPlanning slots={weeklySlots} onUpdate={setWeeklySlots} departments={departments} userId={currentUser.email} />
             )}
           </div>
         )}

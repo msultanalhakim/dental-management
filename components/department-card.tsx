@@ -25,7 +25,7 @@ import {
   formatPhoneForWA, syncLegacyFields,
 } from "@/lib/types"
 import {
-  upsertPatient, deletePatient, upsertSubDepartment,
+  upsertPatient, upsertPatientUserData, deletePatient, upsertSubDepartment,
   upsertDepartment, uploadPhotoBase64, deletePhoto, upsertPatientSortOrder, getNextSortOrder,
 } from "@/lib/supabase-queries"
 import { PatientFormModal } from "./patient-form-modal"
@@ -614,9 +614,10 @@ interface DepartmentCardProps {
   onDeleteDepartment: () => void
   searchQuery?: string
   isAdmin?: boolean
+  userId: string
 }
 
-export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "", isAdmin = false }: DepartmentCardProps) {
+export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "", isAdmin = false, userId }: DepartmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(
     new Set(department.subDepartments?.map((s) => s.id) || [])
@@ -751,7 +752,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
     }
     onUpdate(updated)
     try {
-      await upsertPatient(updatedPatient, department.id, subDeptId)
+      await upsertPatientUserData(updatedPatient.id, userId, updatedPatient.pasienList)
       toast.success("Daftar pasien diperbarui")
     } catch {
       onUpdate(department)  // ROLLBACK
