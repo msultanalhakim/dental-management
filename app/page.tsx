@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { LoginForm } from "@/components/login-form"
+import { RegisterForm } from "@/components/register-form"
 import { Dashboard } from "@/components/dashboard"
 
 const SESSION_KEY = "dental_clinic_session"
@@ -10,7 +11,7 @@ function getTodayString(): string {
   return new Date().toISOString().split("T")[0]
 }
 
-function getStoredSession(): { loggedIn: boolean; date: string } | null {
+function getStoredSession(): { loggedIn: boolean; date: string; email?: string } | null {
   if (typeof window === "undefined") return null
   try {
     const raw = localStorage.getItem(SESSION_KEY)
@@ -21,45 +22,58 @@ function getStoredSession(): { loggedIn: boolean; date: string } | null {
   }
 }
 
-function saveSession() {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, date: getTodayString() }))
+function saveSession(email: string) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, date: getTodayString(), email }))
 }
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY)
 }
 
+type View = "login" | "register" | "dashboard"
+
 export default function Home() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [view, setView] = useState<View>("login")
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     const session = getStoredSession()
     if (session?.loggedIn && session.date === getTodayString()) {
-      setIsLoggedIn(true)
+      setView("dashboard")
     } else if (session?.loggedIn) {
-      clearSession() // expired — different day
+      clearSession()
     }
     setMounted(true)
   }, [])
 
-  // Hourly check for day rollover (less overhead, still reliable for morning use)
   useEffect(() => {
-    if (!isLoggedIn) return
+    if (view !== "dashboard") return
     const interval = setInterval(() => {
       const session = getStoredSession()
       if (session && session.date !== getTodayString()) {
         clearSession()
-        setIsLoggedIn(false)
+        setView("login")
       }
-    }, 3_600_000) // every 1 hour
+    }, 3_600_000)
     return () => clearInterval(interval)
-  }, [isLoggedIn])
+  }, [view])
 
-  const handleLogin = () => { saveSession(); setIsLoggedIn(true) }
-  const handleLogout = () => { clearSession(); setIsLoggedIn(false) }
+  const handleLogin = (email: string) => {
+    saveSession(email)
+    setView("dashboard")
+  }
+
+  const handleLogout = () => {
+    clearSession()
+    setView("login")
+  }
 
   if (!mounted) return null
-  if (!isLoggedIn) return <LoginForm onLogin={handleLogin} />
+  if (view === "register") return (
+    <RegisterForm onBackToLogin={() => setView("login")} />
+  )
+  if (view === "login") return (
+    <LoginForm onLogin={handleLogin} onGoRegister={() => setView("register")} />
+  )
   return <Dashboard onLogout={handleLogout} />
 }

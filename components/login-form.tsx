@@ -4,14 +4,16 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Eye, EyeOff, LockKeyhole } from "lucide-react"
-import { verifyPassword } from "@/lib/supabase-queries"
+import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react"
+import { verifyUserLogin } from "@/lib/supabase-queries"
 
 interface LoginFormProps {
-  onLogin: () => void
+  onLogin: (email: string) => void
+  onGoRegister: () => void
 }
 
-export function LoginForm({ onLogin }: LoginFormProps) {
+export function LoginForm({ onLogin, onGoRegister }: LoginFormProps) {
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
@@ -23,11 +25,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     setLoading(true)
 
     try {
-      const ok = await verifyPassword(password)
-      if (ok) {
-        onLogin()
+      const result = await verifyUserLogin(email, password)
+      if (result === "ok") {
+        onLogin(email)
+      } else if (result === "pending") {
+        setError("Akun Anda masih menunggu persetujuan admin.")
+      } else if (result === "rejected") {
+        setError("Pendaftaran Anda ditolak. Hubungi admin untuk info lebih lanjut.")
       } else {
-        setError("Password salah. Silakan coba lagi.")
+        setError("Email atau password salah. Silakan coba lagi.")
       }
     } catch {
       setError("Gagal terhubung ke server. Periksa koneksi Anda.")
@@ -53,6 +59,27 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         {/* Login card */}
         <div className="rounded-2xl border border-border/50 bg-card p-7 shadow-sm">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Email */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email" className="text-sm font-semibold text-foreground">
+                Email
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="email@contoh.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-background pl-9 h-11"
+                  required
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Password */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password" className="text-sm font-semibold text-foreground">
                 Password
@@ -67,7 +94,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-background pl-9 pr-10 h-11"
                   required
-                  autoFocus
                 />
                 <button
                   type="button"
@@ -90,7 +116,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             <Button
               type="submit"
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-11 font-semibold mt-1"
-              disabled={loading || !password}
+              disabled={loading || !email || !password}
             >
               {loading ? (
                 <span className="flex items-center gap-2">
@@ -104,6 +130,16 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             </Button>
           </form>
         </div>
+
+        <p className="mt-5 text-center text-sm text-muted-foreground">
+          Belum punya akun?{" "}
+          <button
+            onClick={onGoRegister}
+            className="font-semibold text-primary hover:underline"
+          >
+            Daftar sekarang
+          </button>
+        </p>
       </div>
     </div>
   )

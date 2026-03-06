@@ -14,8 +14,9 @@ import {
 import {
   Plus, LogOut, Search, LayoutDashboard, CalendarDays,
   CalendarRange, Bell, Clock, AlertTriangle, Download,
-  Settings, Upload, Eye, EyeOff, LockKeyhole,
+  Settings, Upload, Eye, EyeOff, LockKeyhole, Users,
 } from "lucide-react"
+import { UserApprovalPanel } from "./user-approval-panel"
 import type { Department, Appointment, WeeklySlot } from "@/lib/types"
 import { downloadXlsx, type XlsxSheet } from "@/lib/xlsx-writer"
 import {
@@ -612,6 +613,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [searchDept, setSearchDept] = useState("")
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [userApprovalOpen, setUserApprovalOpen] = useState(false)
   const [brand, setBrand] = useState<BrandSettings>(DEFAULT_BRAND)
   const [exportDeptConfirmOpen, setExportDeptConfirmOpen] = useState(false)
 
@@ -759,6 +761,15 @@ export function Dashboard({ onLogout }: DashboardProps) {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setUserApprovalOpen(true)}
+              className="h-8 w-8 p-0 border-border text-foreground"
+              title="Kelola Pengguna"
+            >
+              <Users className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setSettingsOpen(true)}
               className="h-8 w-8 p-0 border-border text-foreground"
               title="Pengaturan"
@@ -884,6 +895,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
       <AddDepartmentModal open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdd={handleAddDepartment} />
       <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={onLogout} />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brand={brand} onSaveBrand={handleSaveBrand} />
+      <UserApprovalPanel open={userApprovalOpen} onClose={() => setUserApprovalOpen(false)} />
 
       <AlertDialog open={exportDeptConfirmOpen} onOpenChange={setExportDeptConfirmOpen}>
         <AlertDialogContent className="bg-card">

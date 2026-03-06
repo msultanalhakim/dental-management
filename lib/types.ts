@@ -77,6 +77,18 @@ export interface WeeklySlot {
   jumat: string
 }
 
+// ─── App User (registrasi & approval) ─────────────────────────────────────────
+
+export interface AppUser {
+  id: string
+  nama: string
+  email: string
+  status: "pending" | "approved" | "rejected"
+  created_at: string
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export function parseSlotValue(val: string): WeeklySlotData | "ISTIRAHAT" | "" {
   if (!val || val.trim() === "") return ""
   if (val === "ISTIRAHAT") return "ISTIRAHAT"

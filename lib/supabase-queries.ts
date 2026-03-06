@@ -1,11 +1,31 @@
 import { supabase } from "./supabase"
-import type { Department, Patient, PatientEntry, SubDepartment, Appointment, WeeklySlot, Photo } from "./types"
+import type { Department, Patient, PatientEntry, SubDepartment, Appointment, WeeklySlot, Photo, AppUser } from "./types"
 import { syncLegacyFields } from "./types"
 import bcryptjs from "bcryptjs"
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
+export async function loginUser(username: string, password: string): Promise<AppUser | null> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("*")
+    .eq("username", username.trim().toLowerCase())
+    .eq("is_active", true)
+    .single()
+  if (error || !data) return null
+  const ok = await bcryptjs.compare(password, data.password_hash)
+  if (!ok) return null
+  return {
+    id: data.id,
+    username: data.username,
+    role: data.role,
+    displayName: data.display_name || data.username,
+    isActive: data.is_active,
+  }
+}
+
 export async function verifyPassword(password: string): Promise<boolean> {
+  // Legacy single-password check (kept for backward compat with admin_auth table)
   const { data, error } = await supabase
     .from("admin_auth")
     .select("password_hash")
@@ -15,9 +35,95 @@ export async function verifyPassword(password: string): Promise<boolean> {
   return bcryptjs.compare(password, data.password_hash)
 }
 
-// ─── DEPARTMENTS ─────────────────────────────────────────────────────────────
+// ─── USER MANAGEMENT (admin only) ─────────────────────────────────────────────
+
+export async function fetchUsers(): Promise<AppUser[]> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, username, role, display_name, is_active, created_at")
+    .order("created_at", { ascending: true })
+  if (error || !data) return []
+  return data.map((u) => ({
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    displayName: u.display_name || u.username,
+    isActive: u.is_active,
+  }))
+}
+
+export async function createUser(username: string, password: string, role: "admin" | "user", displayName: string): Promise<AppUser | null> {
+  const hash = await bcryptjs.hash(password, 10)
+  const { data, error } = await supabase
+    .from("app_users")
+    .insert({
+      username: username.trim().toLowerCase(),
+      password_hash: hash,
+      role,
+      display_name: displayName.trim(),
+      is_active: true,
+    })
+    .select()
+    .single()
+  if (error || !data) return null
+  return {
+    id: data.id,
+    username: data.username,
+    role: data.role,
+    displayName: data.display_name,
+    isActive: data.is_active,
+  }
+}
+
+export async function updateUser(id: string, updates: { displayName?: string; role?: "admin" | "user"; isActive?: boolean }): Promise<void> {
+  const row: Record<string, unknown> = {}
+  if (updates.displayName !== undefined) row.display_name = updates.displayName
+  if (updates.role !== undefined) row.role = updates.role
+  if (updates.isActive !== undefined) row.is_active = updates.isActive
+  await supabase.from("app_users").update(row).eq("id", id)
+}
+
+export async function changeUserPassword(userId: string, newPassword: string): Promise<void> {
+  const hash = await bcryptjs.hash(newPassword, 10)
+  await supabase.from("app_users").update({ password_hash: hash }).eq("id", userId)
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  await supabase.from("app_users").delete().eq("id", id)
+}
+
+// ─── DEPARTMENTS (global — admin manages structure) ───────────────────────────
 
 export async function fetchDepartments(): Promise<Department[]> {
+  const { data: depts, error } = await supabase
+    .from("departments")
+    .select("*")
+    .order("sort_order", { ascending: true })
+  if (error || !depts) return []
+
+  const { data: subs } = await supabase
+    .from("sub_departments")
+    .select("*")
+    .order("sort_order", { ascending: true })
+
+  return depts.map((d) => {
+    const deptSubs = (subs || []).filter((s) => s.department_id === d.id)
+    return {
+      id: d.id,
+      name: d.name,
+      hasSubDepartments: d.has_sub_departments,
+      patients: [],
+      subDepartments: deptSubs.map((s) => ({
+        id: s.id,
+        name: s.name,
+        patients: [],
+      })),
+    } as Department
+  })
+}
+
+// Fetch departments WITH patient data for a specific user
+export async function fetchDepartmentsForUser(userId: string): Promise<Department[]> {
   const { data: depts, error } = await supabase
     .from("departments")
     .select("*")
@@ -32,9 +138,12 @@ export async function fetchDepartments(): Promise<Department[]> {
   const { data: patients } = await supabase
     .from("patients")
     .select("*")
+    .eq("user_id", userId)
     .order("sort_order", { ascending: true })
 
-  const { data: photos } = await supabase.from("patient_photos").select("*")
+  const { data: photos } = await supabase
+    .from("patient_photos")
+    .select("*")
 
   const photosByPatient: Record<string, Photo[]> = {}
   for (const ph of photos || []) {
@@ -65,6 +174,7 @@ export async function fetchDepartments(): Promise<Department[]> {
       id: row.id as string,
       requirement: row.requirement as string,
       status: row.status as Patient["status"],
+      userId: row.user_id as string,
       pasienList,
       hasPasien: pasienList.length > 0,
       namaPasien: first?.namaPasien ?? (row.nama_pasien as string ?? ""),
@@ -118,8 +228,12 @@ export async function deleteSubDepartment(id: string) {
 
 // ─── PATIENTS ────────────────────────────────────────────────────────────────
 
-export async function getNextSortOrder(departmentId: string, subDepartmentId?: string): Promise<number> {
-  let query = supabase.from("patients").select("sort_order").eq("department_id", departmentId)
+export async function getNextSortOrder(departmentId: string, userId: string, subDepartmentId?: string): Promise<number> {
+  let query = supabase
+    .from("patients")
+    .select("sort_order")
+    .eq("department_id", departmentId)
+    .eq("user_id", userId)
   if (subDepartmentId) {
     query = query.eq("sub_department_id", subDepartmentId)
   } else {
@@ -133,6 +247,7 @@ export async function getNextSortOrder(departmentId: string, subDepartmentId?: s
 export async function upsertPatient(
   patient: Patient,
   departmentId: string,
+  userId: string,
   subDepartmentId?: string,
   sortOrder?: number
 ) {
@@ -141,6 +256,7 @@ export async function upsertPatient(
     id: synced.id,
     department_id: departmentId,
     sub_department_id: subDepartmentId || null,
+    user_id: userId,
     requirement: synced.requirement,
     status: synced.status,
     has_pasien: synced.hasPasien,
@@ -213,12 +329,13 @@ export async function deletePhoto(photo: Photo) {
   await supabase.from("patient_photos").delete().eq("id", photo.id)
 }
 
-// ─── APPOINTMENTS ─────────────────────────────────────────────────────────────
+// ─── APPOINTMENTS (per user) ──────────────────────────────────────────────────
 
-export async function fetchAppointments(): Promise<Appointment[]> {
+export async function fetchAppointments(userId: string): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
+    .eq("user_id", userId)
     .order("tanggal", { ascending: false })
   if (error || !data) return []
   return data.map((row) => ({
@@ -232,12 +349,14 @@ export async function fetchAppointments(): Promise<Appointment[]> {
     namaPasien: row.nama_pasien,
     nomorTelp: row.nomor_telp,
     checklist: row.checklist,
+    userId: row.user_id,
   }))
 }
 
-export async function upsertAppointment(appt: Appointment) {
+export async function upsertAppointment(appt: Appointment, userId: string) {
   await supabase.from("appointments").upsert({
     id: appt.id,
+    user_id: userId,
     tanggal: appt.tanggal,
     jam: appt.jam,
     kubikel: appt.kubikel,
@@ -254,12 +373,13 @@ export async function deleteAppointment(id: string) {
   await supabase.from("appointments").delete().eq("id", id)
 }
 
-// ─── WEEKLY SLOTS ─────────────────────────────────────────────────────────────
+// ─── WEEKLY SLOTS (per user) ──────────────────────────────────────────────────
 
-export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> {
+export async function fetchWeeklySlots(userId: string, weekKey?: string): Promise<WeeklySlot[]> {
   let query = supabase
     .from("weekly_slots")
     .select("*")
+    .eq("user_id", userId)
     .order("sort_order", { ascending: true })
 
   if (weekKey) {
@@ -277,12 +397,14 @@ export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> 
     rabu: row.rabu || "",
     kamis: row.kamis || "",
     jumat: row.jumat || "",
+    userId: row.user_id,
   }))
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string) {
+export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string, userId: string) {
   await supabase.from("weekly_slots").upsert({
-    id: slot.id,
+    id: `${userId}-${weekKey}-${slot.id}`,
+    user_id: userId,
     jam: slot.jam,
     week_key: weekKey,
     senin: slot.senin,
@@ -290,17 +412,38 @@ export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string) {
     rabu: slot.rabu,
     kamis: slot.kamis,
     jumat: slot.jumat,
+    sort_order: parseInt(slot.id.replace(/\D/g, "") || "0"),
   })
 }
 
-// ─── CHANGE PASSWORD ──────────────────────────────────────────────────────────
+// ─── CHANGE OWN PASSWORD ──────────────────────────────────────────────────────
 
-export async function changePassword(newPassword: string): Promise<void> {
+export async function changePassword(newPassword: string, userId?: string): Promise<void> {
   const hash = await bcryptjs.hash(newPassword, 10)
-  const { data } = await supabase.from("admin_auth").select("id").limit(1).single()
-  if (data) {
-    await supabase.from("admin_auth").update({ password_hash: hash }).eq("id", data.id)
+  if (userId) {
+    await supabase.from("app_users").update({ password_hash: hash }).eq("id", userId)
   } else {
-    await supabase.from("admin_auth").insert({ password_hash: hash })
+    // Legacy: update admin_auth table
+    const { data } = await supabase.from("admin_auth").select("id").limit(1).single()
+    if (data) {
+      await supabase.from("admin_auth").update({ password_hash: hash }).eq("id", data.id)
+    } else {
+      await supabase.from("admin_auth").insert({ password_hash: hash })
+    }
   }
+}
+
+// ─── APP SETTINGS ─────────────────────────────────────────────────────────────
+
+export async function loadAppSetting(key: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", key)
+    .single()
+  return data?.value ?? null
+}
+
+export async function saveAppSetting(key: string, value: string): Promise<void> {
+  await supabase.from("app_settings").upsert({ key, value })
 }
