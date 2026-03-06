@@ -23,6 +23,7 @@ import type { AppUser } from "@/lib/types"
 import {
   fetchUsers, createUser, updateUser, deleteUser, changeUserPassword,
   fetchPendingUsers, approveUser, rejectUser,
+  setPhotoPermissionForAll, getGlobalPhotoPermission,
 } from "@/lib/supabase-queries"
 import { toast } from "sonner"
 
@@ -55,6 +56,10 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
   const [showConfirm, setShowConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // ── Global photo permission ──────────────────────────────────────────────────
+  const [globalPhotoEnabled, setGlobalPhotoEnabled] = useState(true)
+  const [togglingPhoto, setTogglingPhoto] = useState(false)
+
   // ── Tab Pending ──────────────────────────────────────────────────────────────
   const [pendingUsers, setPendingUsers] = useState<AppUser[]>([])
   const [loadingPending, setLoadingPending] = useState(false)
@@ -73,8 +78,9 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
 
   async function loadUsers() {
     setLoadingUsers(true)
-    const data = await fetchUsers()
+    const [data, globalPhoto] = await Promise.all([fetchUsers(), getGlobalPhotoPermission()])
     setUsers(data)
+    setGlobalPhotoEnabled(globalPhoto)
     setLoadingUsers(false)
   }
 
@@ -168,12 +174,19 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     } catch { toast.error("Gagal mengubah status user") }
   }
 
-  async function handleTogglePhoto(user: AppUser) {
+  async function handleToggleGlobalPhoto() {
+    setTogglingPhoto(true)
     try {
-      await updateUser(user.id, { canUploadPhoto: !user.canUploadPhoto })
-      toast.success(`Fitur foto "${user.username}" ${!user.canUploadPhoto ? "diaktifkan" : "dinonaktifkan"}`)
+      const next = !globalPhotoEnabled
+      await setPhotoPermissionForAll(next)
+      setGlobalPhotoEnabled(next)
       await loadUsers()
-    } catch { toast.error("Gagal mengubah fitur foto") }
+      toast.success(next ? "Izin foto diaktifkan untuk semua user." : "Izin foto dicabut dari semua user. Mereka akan otomatis terlogout.")
+    } catch {
+      toast.error("Gagal mengubah izin foto global.")
+    } finally {
+      setTogglingPhoto(false)
+    }
   }
 
   async function handleDelete() {
@@ -339,8 +352,29 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
             {/* ── LIST ── */}
             {view === "list" && mainTab === "users" && (
               <>
-                <div className="flex justify-end">
-                  <Button onClick={openAdd} size="sm" className="gap-1.5 bg-primary text-primary-foreground font-bold h-9">
+                <div className="flex items-center justify-between gap-3">
+                  {/* Global photo permission toggle */}
+                  <div className="flex items-center gap-3 flex-1 rounded-xl border border-border/50 bg-background px-4 py-2.5">
+                    <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${globalPhotoEnabled ? "bg-[#e8f5e3]" : "bg-muted"}`}>
+                      <Camera className={`h-3.5 w-3.5 ${globalPhotoEnabled ? "text-[#1a6010]" : "text-muted-foreground"}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-foreground">Izin Upload Foto</p>
+                      <p className="text-[10px] text-muted-foreground">Berlaku untuk semua user (bukan admin)</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleGlobalPhoto}
+                      disabled={togglingPhoto}
+                      className="shrink-0 disabled:opacity-50"
+                      title={globalPhotoEnabled ? "Cabut izin foto semua user" : "Berikan izin foto semua user"}
+                    >
+                      {globalPhotoEnabled
+                        ? <ToggleRight className="h-6 w-6 text-[#1a6010]" />
+                        : <ToggleLeft className="h-6 w-6 text-muted-foreground" />}
+                    </button>
+                  </div>
+                  <Button onClick={openAdd} size="sm" className="gap-1.5 bg-primary text-primary-foreground font-bold h-9 shrink-0">
                     <Plus className="h-4 w-4" /> Tambah User
                   </Button>
                 </div>
@@ -379,11 +413,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                                   Nonaktif
                                 </span>
                               )}
-                              {!user.canUploadPhoto && user.role !== "admin" && (
-                                <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">
-                                  <Camera className="h-2.5 w-2.5" />Foto Off
-                                </span>
-                              )}
                               {user.id === currentUserId && (
                                 <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-[#c8ecc0] text-[#1a6010]">
                                   Saya
@@ -396,15 +425,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
 
                         {/* Actions */}
                         <div className="flex items-center gap-1 shrink-0 ml-2">
-                          <button
-                            onClick={() => handleTogglePhoto(user)}
-                            disabled={user.role === "admin"}
-                            className="rounded-lg p-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                            style={{ color: user.role === "admin" ? "#1a6010" : user.canUploadPhoto ? "#1a6010" : "#888" }}
-                            title={user.role === "admin" ? "Admin selalu bisa upload foto" : user.canUploadPhoto ? "Cabut izin foto" : "Berikan izin foto"}
-                          >
-                            <Camera className="h-4 w-4" />
-                          </button>
                           <button
                             onClick={() => handleToggleActive(user)}
                             disabled={user.id === currentUserId}

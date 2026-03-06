@@ -244,6 +244,26 @@ export async function updateUser(
   if (error) throw error
 }
 
+// Set can_upload_photo untuk SEMUA user non-admin sekaligus
+export async function setPhotoPermissionForAll(enabled: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("app_users")
+    .update({ can_upload_photo: enabled })
+    .neq("role", "admin")
+  if (error) throw error
+}
+
+// Cek apakah saat ini semua user non-admin punya izin foto
+export async function getGlobalPhotoPermission(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("can_upload_photo")
+    .neq("role", "admin")
+  if (error || !data || data.length === 0) return true
+  // true jika semua user non-admin punya izin
+  return data.every((row) => row.can_upload_photo !== false)
+}
+
 export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
   const password_hash = await bcryptjs.hash(newPassword, 10)
   const { error } = await supabase
