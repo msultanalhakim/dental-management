@@ -49,7 +49,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
   const [formUsername, setFormUsername] = useState("")
   const [formDisplayName, setFormDisplayName] = useState("")
   const [formRole, setFormRole] = useState<"admin" | "user">("user")
-  const [formCanUploadPhoto, setFormCanUploadPhoto] = useState(true)
   const [formPassword, setFormPassword] = useState("")
   const [formConfirmPw, setFormConfirmPw] = useState("")
   const [showPw, setShowPw] = useState(false)
@@ -98,7 +97,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
   // ── Handlers: Users ──────────────────────────────────────────────────────────
   function openAdd() {
     setFormUsername(""); setFormDisplayName(""); setFormRole("user")
-    setFormCanUploadPhoto(true); setFormPassword(""); setFormConfirmPw("")
+    setFormPassword(""); setFormConfirmPw("")
     setShowPw(false); setShowConfirm(false); setEditingUser(null)
     setView("add")
   }
@@ -107,7 +106,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     setEditingUser(user)
     setFormDisplayName(user.displayName)
     setFormRole(user.role)
-    setFormCanUploadPhoto(user.canUploadPhoto)
     setView("edit")
   }
 
@@ -141,7 +139,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
       await updateUser(editingUser.id, {
         displayName: formDisplayName,
         role: formRole,
-        canUploadPhoto: formCanUploadPhoto,
       })
       toast.success("User berhasil diperbarui")
       await loadUsers()
@@ -260,24 +257,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     </div>
   )
 
-  const PhotoToggleRow = () => (
-    <div className="flex items-center justify-between rounded-xl border border-border/50 bg-background px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${formCanUploadPhoto ? "bg-[#e8f5e3]" : "bg-muted"}`}>
-          <Camera className={`h-4 w-4 ${formCanUploadPhoto ? "text-[#1a6010]" : "text-muted-foreground"}`} />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-foreground">Izin Upload Foto</p>
-          <p className="text-xs text-muted-foreground">Upload foto pada kolom requirement</p>
-        </div>
-      </div>
-      <button type="button" onClick={() => setFormCanUploadPhoto(!formCanUploadPhoto)} className="shrink-0">
-        {formCanUploadPhoto
-          ? <ToggleRight className="h-6 w-6 text-[#1a6010]" />
-          : <ToggleLeft className="h-6 w-6 text-muted-foreground" />}
-      </button>
-    </div>
-  )
 
   // ── Render ───────────────────────────────────────────────────────────────────
   const dialogTitle =
@@ -497,7 +476,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                     </SelectContent>
                   </Select>
                 </div>
-                <PhotoToggleRow />
                 <PasswordField label="Password" value={formPassword} onChange={setFormPassword} show={showPw} onToggleShow={() => setShowPw(!showPw)} />
                 <PasswordField label="Konfirmasi Password" value={formConfirmPw} onChange={setFormConfirmPw} show={showConfirm} onToggleShow={() => setShowConfirm(!showConfirm)} placeholder="Ulangi password" />
                 {formPassword && formConfirmPw && formPassword !== formConfirmPw && (
@@ -533,7 +511,6 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                     </SelectContent>
                   </Select>
                 </div>
-                <PhotoToggleRow />
                 <div className="flex gap-2 pt-1">
                   <Button variant="outline" onClick={() => setView("list")} className="flex-1 font-bold border-border">Batal</Button>
                   <Button onClick={handleEdit} disabled={saving} className="flex-1 bg-primary text-primary-foreground font-bold">
