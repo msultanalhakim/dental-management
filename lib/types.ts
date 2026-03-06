@@ -85,6 +85,12 @@ export interface AppUser {
   email: string
   status: "pending" | "approved" | "rejected"
   created_at: string
+  // Extended fields — tersimpan di kolom DB; di-fallback saat tidak ada nilainya
+  role: "admin" | "user"
+  isActive: boolean
+  // Alias helpers (derived dari nama / email agar komponen lain tidak perlu mapping)
+  displayName: string   // = nama
+  username: string      // = email (bagian sebelum @)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

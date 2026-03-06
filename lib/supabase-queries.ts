@@ -1,31 +1,14 @@
 import { supabase } from "./supabase"
-import type { Department, Patient, PatientEntry, SubDepartment, Appointment, WeeklySlot, Photo, AppUser } from "./types"
+import type {
+  Department, Patient, PatientEntry, SubDepartment,
+  Appointment, WeeklySlot, Photo, AppUser,
+} from "./types"
 import { syncLegacyFields } from "./types"
 import bcryptjs from "bcryptjs"
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
-
-export async function loginUser(username: string, password: string): Promise<AppUser | null> {
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("*")
-    .eq("username", username.trim().toLowerCase())
-    .eq("is_active", true)
-    .single()
-  if (error || !data) return null
-  const ok = await bcryptjs.compare(password, data.password_hash)
-  if (!ok) return null
-  return {
-    id: data.id,
-    username: data.username,
-    role: data.role,
-    displayName: data.display_name || data.username,
-    isActive: data.is_active,
-  }
-}
+// ─── ADMIN AUTH (password tunggal lama — tetap dipertahankan untuk backward compat) ──
 
 export async function verifyPassword(password: string): Promise<boolean> {
-  // Legacy single-password check (kept for backward compat with admin_auth table)
   const { data, error } = await supabase
     .from("admin_auth")
     .select("password_hash")
@@ -35,95 +18,210 @@ export async function verifyPassword(password: string): Promise<boolean> {
   return bcryptjs.compare(password, data.password_hash)
 }
 
-// ─── USER MANAGEMENT (admin only) ─────────────────────────────────────────────
+export async function changePassword(newPassword: string): Promise<void> {
+  const hash = await bcryptjs.hash(newPassword, 10)
+  const { data } = await supabase.from("admin_auth").select("id").limit(1).single()
+  if (data) {
+    await supabase.from("admin_auth").update({ password_hash: hash }).eq("id", data.id)
+  } else {
+    await supabase.from("admin_auth").insert({ password_hash: hash })
+  }
+}
+
+// ─── USER REGISTRATION ────────────────────────────────────────────────────────
+
+export async function registerUser({
+  nama,
+  email,
+  password,
+}: {
+  nama: string
+  email: string
+  password: string
+}): Promise<boolean> {
+  // Cek apakah email sudah terdaftar
+  const { data: existing } = await supabase
+    .from("app_users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle()
+
+  if (existing) return false
+
+  const password_hash = await bcryptjs.hash(password, 10)
+
+  const { error } = await supabase.from("app_users").insert({
+    nama,
+    email,
+    password_hash,
+    status: "pending",
+  })
+
+  return !error
+}
+
+// ─── USER LOGIN (email + password, status harus 'approved') ──────────────────
+
+export async function verifyUserLogin(
+  email: string,
+  password: string
+): Promise<"ok" | "pending" | "rejected" | "invalid"> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("password_hash, status")
+    .eq("email", email)
+    .maybeSingle()
+
+  if (error || !data) return "invalid"
+
+  const match = await bcryptjs.compare(password, data.password_hash)
+  if (!match) return "invalid"
+
+  if (data.status === "approved") return "ok"
+  if (data.status === "pending") return "pending"
+  if (data.status === "rejected") return "rejected"
+  return "invalid"
+}
+
+// ─── ADMIN: KELOLA PENGGUNA ───────────────────────────────────────────────────
+
+export async function fetchPendingUsers(): Promise<AppUser[]> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, nama, email, status, created_at")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+
+  if (error || !data) return []
+  return data as AppUser[]
+}
+
+export async function fetchApprovedUsers(): Promise<AppUser[]> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, nama, email, status, created_at")
+    .eq("status", "approved")
+    .order("created_at", { ascending: true })
+
+  if (error || !data) return []
+  return data as AppUser[]
+}
+
+export async function approveUser(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("app_users")
+    .update({ status: "approved" })
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function rejectUser(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("app_users")
+    .delete()
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("app_users")
+    .delete()
+    .eq("id", id)
+  if (error) throw error
+}
+
+// Helper: map raw DB row → AppUser (dengan derived fields)
+function rowToAppUser(row: Record<string, unknown>): AppUser {
+  const email = (row.email as string) ?? ""
+  return {
+    id: row.id as string,
+    nama: (row.nama as string) ?? "",
+    email,
+    status: (row.status as AppUser["status"]) ?? "pending",
+    created_at: (row.created_at as string) ?? "",
+    role: (row.role as "admin" | "user") ?? "user",
+    isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
+    displayName: (row.nama as string) ?? email,
+    username: email.split("@")[0],
+  }
+}
+
+// ─── ADMIN: Kelola semua user (fetch, create, update) ────────────────────────
 
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("id, username, role, display_name, is_active, created_at")
+    .select("id, nama, email, status, created_at, role, is_active")
     .order("created_at", { ascending: true })
   if (error || !data) return []
-  return data.map((u) => ({
-    id: u.id,
-    username: u.username,
-    role: u.role,
-    displayName: u.display_name || u.username,
-    isActive: u.is_active,
-  }))
+  return (data as Record<string, unknown>[]).map(rowToAppUser)
 }
 
-export async function createUser(username: string, password: string, role: "admin" | "user", displayName: string): Promise<AppUser | null> {
-  const hash = await bcryptjs.hash(password, 10)
+export async function createUser(
+  username: string,
+  password: string,
+  role: "admin" | "user",
+  displayName: string,
+): Promise<AppUser | null> {
+  // username dipakai sebagai prefix email; jika sudah berupa email, pakai apa adanya
+  const email = username.includes("@") ? username : `${username}@internal.local`
+
+  // Cek duplikat
+  const { data: existing } = await supabase
+    .from("app_users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle()
+  if (existing) return null
+
+  const password_hash = await bcryptjs.hash(password, 10)
+
   const { data, error } = await supabase
     .from("app_users")
     .insert({
-      username: username.trim().toLowerCase(),
-      password_hash: hash,
+      nama: displayName,
+      email,
+      password_hash,
+      status: "approved",
       role,
-      display_name: displayName.trim(),
       is_active: true,
     })
-    .select()
+    .select("id, nama, email, status, created_at, role, is_active")
     .single()
+
   if (error || !data) return null
-  return {
-    id: data.id,
-    username: data.username,
-    role: data.role,
-    displayName: data.display_name,
-    isActive: data.is_active,
-  }
+  return rowToAppUser(data as Record<string, unknown>)
 }
 
-export async function updateUser(id: string, updates: { displayName?: string; role?: "admin" | "user"; isActive?: boolean }): Promise<void> {
-  const row: Record<string, unknown> = {}
-  if (updates.displayName !== undefined) row.display_name = updates.displayName
-  if (updates.role !== undefined) row.role = updates.role
-  if (updates.isActive !== undefined) row.is_active = updates.isActive
-  await supabase.from("app_users").update(row).eq("id", id)
+export async function updateUser(
+  id: string,
+  patch: Partial<{ displayName: string; role: "admin" | "user"; isActive: boolean }>,
+): Promise<void> {
+  const dbPatch: Record<string, unknown> = {}
+  if (patch.displayName !== undefined) dbPatch.nama = patch.displayName
+  if (patch.role !== undefined) dbPatch.role = patch.role
+  if (patch.isActive !== undefined) dbPatch.is_active = patch.isActive
+
+  const { error } = await supabase
+    .from("app_users")
+    .update(dbPatch)
+    .eq("id", id)
+  if (error) throw error
 }
 
-export async function changeUserPassword(userId: string, newPassword: string): Promise<void> {
-  const hash = await bcryptjs.hash(newPassword, 10)
-  await supabase.from("app_users").update({ password_hash: hash }).eq("id", userId)
+export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
+  const password_hash = await bcryptjs.hash(newPassword, 10)
+  const { error } = await supabase
+    .from("app_users")
+    .update({ password_hash })
+    .eq("id", id)
+  if (error) throw error
 }
 
-export async function deleteUser(id: string): Promise<void> {
-  await supabase.from("app_users").delete().eq("id", id)
-}
-
-// ─── DEPARTMENTS (global — admin manages structure) ───────────────────────────
+// ─── DEPARTMENTS ─────────────────────────────────────────────────────────────
 
 export async function fetchDepartments(): Promise<Department[]> {
-  const { data: depts, error } = await supabase
-    .from("departments")
-    .select("*")
-    .order("sort_order", { ascending: true })
-  if (error || !depts) return []
-
-  const { data: subs } = await supabase
-    .from("sub_departments")
-    .select("*")
-    .order("sort_order", { ascending: true })
-
-  return depts.map((d) => {
-    const deptSubs = (subs || []).filter((s) => s.department_id === d.id)
-    return {
-      id: d.id,
-      name: d.name,
-      hasSubDepartments: d.has_sub_departments,
-      patients: [],
-      subDepartments: deptSubs.map((s) => ({
-        id: s.id,
-        name: s.name,
-        patients: [],
-      })),
-    } as Department
-  })
-}
-
-// Fetch departments WITH patient data for a specific user
-export async function fetchDepartmentsForUser(userId: string): Promise<Department[]> {
   const { data: depts, error } = await supabase
     .from("departments")
     .select("*")
@@ -138,12 +236,9 @@ export async function fetchDepartmentsForUser(userId: string): Promise<Departmen
   const { data: patients } = await supabase
     .from("patients")
     .select("*")
-    .eq("user_id", userId)
     .order("sort_order", { ascending: true })
 
-  const { data: photos } = await supabase
-    .from("patient_photos")
-    .select("*")
+  const { data: photos } = await supabase.from("patient_photos").select("*")
 
   const photosByPatient: Record<string, Photo[]> = {}
   for (const ph of photos || []) {
@@ -174,7 +269,6 @@ export async function fetchDepartmentsForUser(userId: string): Promise<Departmen
       id: row.id as string,
       requirement: row.requirement as string,
       status: row.status as Patient["status"],
-      userId: row.user_id as string,
       pasienList,
       hasPasien: pasienList.length > 0,
       namaPasien: first?.namaPasien ?? (row.nama_pasien as string ?? ""),
@@ -228,12 +322,8 @@ export async function deleteSubDepartment(id: string) {
 
 // ─── PATIENTS ────────────────────────────────────────────────────────────────
 
-export async function getNextSortOrder(departmentId: string, userId: string, subDepartmentId?: string): Promise<number> {
-  let query = supabase
-    .from("patients")
-    .select("sort_order")
-    .eq("department_id", departmentId)
-    .eq("user_id", userId)
+export async function getNextSortOrder(departmentId: string, subDepartmentId?: string): Promise<number> {
+  let query = supabase.from("patients").select("sort_order").eq("department_id", departmentId)
   if (subDepartmentId) {
     query = query.eq("sub_department_id", subDepartmentId)
   } else {
@@ -247,7 +337,6 @@ export async function getNextSortOrder(departmentId: string, userId: string, sub
 export async function upsertPatient(
   patient: Patient,
   departmentId: string,
-  userId: string,
   subDepartmentId?: string,
   sortOrder?: number
 ) {
@@ -256,7 +345,6 @@ export async function upsertPatient(
     id: synced.id,
     department_id: departmentId,
     sub_department_id: subDepartmentId || null,
-    user_id: userId,
     requirement: synced.requirement,
     status: synced.status,
     has_pasien: synced.hasPasien,
@@ -329,13 +417,12 @@ export async function deletePhoto(photo: Photo) {
   await supabase.from("patient_photos").delete().eq("id", photo.id)
 }
 
-// ─── APPOINTMENTS (per user) ──────────────────────────────────────────────────
+// ─── APPOINTMENTS ─────────────────────────────────────────────────────────────
 
-export async function fetchAppointments(userId: string): Promise<Appointment[]> {
+export async function fetchAppointments(): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
-    .eq("user_id", userId)
     .order("tanggal", { ascending: false })
   if (error || !data) return []
   return data.map((row) => ({
@@ -349,14 +436,12 @@ export async function fetchAppointments(userId: string): Promise<Appointment[]> 
     namaPasien: row.nama_pasien,
     nomorTelp: row.nomor_telp,
     checklist: row.checklist,
-    userId: row.user_id,
   }))
 }
 
-export async function upsertAppointment(appt: Appointment, userId: string) {
+export async function upsertAppointment(appt: Appointment) {
   await supabase.from("appointments").upsert({
     id: appt.id,
-    user_id: userId,
     tanggal: appt.tanggal,
     jam: appt.jam,
     kubikel: appt.kubikel,
@@ -373,13 +458,12 @@ export async function deleteAppointment(id: string) {
   await supabase.from("appointments").delete().eq("id", id)
 }
 
-// ─── WEEKLY SLOTS (per user) ──────────────────────────────────────────────────
+// ─── WEEKLY SLOTS ─────────────────────────────────────────────────────────────
 
-export async function fetchWeeklySlots(userId: string, weekKey?: string): Promise<WeeklySlot[]> {
+export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> {
   let query = supabase
     .from("weekly_slots")
     .select("*")
-    .eq("user_id", userId)
     .order("sort_order", { ascending: true })
 
   if (weekKey) {
@@ -397,14 +481,12 @@ export async function fetchWeeklySlots(userId: string, weekKey?: string): Promis
     rabu: row.rabu || "",
     kamis: row.kamis || "",
     jumat: row.jumat || "",
-    userId: row.user_id,
   }))
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string, userId: string) {
+export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string) {
   await supabase.from("weekly_slots").upsert({
-    id: `${userId}-${weekKey}-${slot.id}`,
-    user_id: userId,
+    id: slot.id,
     jam: slot.jam,
     week_key: weekKey,
     senin: slot.senin,
@@ -412,38 +494,5 @@ export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string, userId
     rabu: slot.rabu,
     kamis: slot.kamis,
     jumat: slot.jumat,
-    sort_order: parseInt(slot.id.replace(/\D/g, "") || "0"),
   })
-}
-
-// ─── CHANGE OWN PASSWORD ──────────────────────────────────────────────────────
-
-export async function changePassword(newPassword: string, userId?: string): Promise<void> {
-  const hash = await bcryptjs.hash(newPassword, 10)
-  if (userId) {
-    await supabase.from("app_users").update({ password_hash: hash }).eq("id", userId)
-  } else {
-    // Legacy: update admin_auth table
-    const { data } = await supabase.from("admin_auth").select("id").limit(1).single()
-    if (data) {
-      await supabase.from("admin_auth").update({ password_hash: hash }).eq("id", data.id)
-    } else {
-      await supabase.from("admin_auth").insert({ password_hash: hash })
-    }
-  }
-}
-
-// ─── APP SETTINGS ─────────────────────────────────────────────────────────────
-
-export async function loadAppSetting(key: string): Promise<string | null> {
-  const { data } = await supabase
-    .from("app_settings")
-    .select("value")
-    .eq("key", key)
-    .single()
-  return data?.value ?? null
-}
-
-export async function saveAppSetting(key: string, value: string): Promise<void> {
-  await supabase.from("app_settings").upsert({ key, value })
 }
