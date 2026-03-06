@@ -1,7 +1,7 @@
 import { supabase } from "./supabase"
 import type {
   Department, Patient, PatientEntry, SubDepartment,
-  Appointment, WeeklySlot, Photo, AppUser,
+  Appointment, Photo, AppUser,
 } from "./types"
 import bcryptjs from "bcryptjs"
 
@@ -484,41 +484,48 @@ export async function deleteAppointment(id: string) {
 
 // ─── WEEKLY SLOTS ─────────────────────────────────────────────────────────────
 
-export async function fetchWeeklySlots(userId: string, weekKey?: string): Promise<WeeklySlot[]> {
-  let query = supabase
+// Fetch sel terisi untuk (userId, weekKey) → Record<jam, Record<hari, value>>
+export async function fetchWeeklyCells(
+  userId: string,
+  weekKey: string
+): Promise<Record<string, Record<string, string>>> {
+  const { data, error } = await supabase
     .from("weekly_slots")
-    .select("*")
+    .select("jam, hari, value")
     .eq("user_id", userId)
-    .order("sort_order", { ascending: true })
+    .eq("week_key", weekKey)
 
-  if (weekKey) {
-    query = query.eq("week_key", weekKey)
+  const result: Record<string, Record<string, string>> = {}
+  if (error || !data) return result
+
+  for (const row of data) {
+    if (!result[row.jam]) result[row.jam] = {}
+    result[row.jam][row.hari] = row.value
   }
-
-  const { data, error } = await query
-  if (error || !data) return []
-  return data.map((row) => ({
-    id: row.id,
-    jam: row.jam,
-    weekKey: row.week_key ?? weekKey ?? "",
-    senin: row.senin || "",
-    selasa: row.selasa || "",
-    rabu: row.rabu || "",
-    kamis: row.kamis || "",
-    jumat: row.jumat || "",
-  }))
+  return result
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string, userId: string) {
-  await supabase.from("weekly_slots").upsert({
-    id: slot.id,
-    user_id: userId,
-    jam: slot.jam,
-    week_key: weekKey,
-    senin: slot.senin,
-    selasa: slot.selasa,
-    rabu: slot.rabu,
-    kamis: slot.kamis,
-    jumat: slot.jumat,
-  })
+// Upsert satu sel (jam + hari) untuk user & week tertentu
+export async function upsertWeeklyCell(
+  userId: string,
+  weekKey: string,
+  jam: string,
+  hari: string,
+  value: string
+) {
+  if (!value) {
+    // Hapus jika kosong (sparse: sel kosong tidak disimpan)
+    await supabase
+      .from("weekly_slots")
+      .delete()
+      .eq("user_id", userId)
+      .eq("week_key", weekKey)
+      .eq("jam", jam)
+      .eq("hari", hari)
+    return
+  }
+  await supabase.from("weekly_slots").upsert(
+    { user_id: userId, week_key: weekKey, jam, hari, value, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,week_key,jam,hari" }
+  )
 }

@@ -15,11 +15,12 @@ import {
   ChevronLeft, ChevronRight, Lock,
 } from "lucide-react"
 import type { WeeklySlot, Department, Patient, WeeklySlotData } from "@/lib/types"
+import { WEEK_TEMPLATE } from "@/lib/types"
 import { parseSlotValue, serializeSlotData, formatPhoneForWA } from "@/lib/types"
-import { upsertWeeklySlot, fetchWeeklySlots } from "@/lib/supabase-queries"
+import { upsertWeeklyCell, fetchWeeklyCells } from "@/lib/supabase-queries"
 import { toast } from "sonner"
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// --- Types ------------------------------------------------------------------
 
 interface WeeklyPlanningProps {
   slots: WeeklySlot[]          // current week's slots (template + data)
@@ -30,7 +31,7 @@ interface WeeklyPlanningProps {
 
 type DayKey = "senin" | "selasa" | "rabu" | "kamis" | "jumat"
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// --- Constants ---------------------------------------------------------------
 
 const DAYS: { key: DayKey; label: string }[] = [
   { key: "senin",  label: "Senin"  },
@@ -45,7 +46,7 @@ const MONTHS_ID = [
   "Juli","Agustus","September","Oktober","November","Desember",
 ]
 
-// ─── Date helpers ────────────────────────────────────────────────────────────
+// --- Date helpers ------------------------------------------------------------
 
 /** Returns Monday 00:00:00 of the week containing `date` */
 function getMondayOf(date: Date): Date {
@@ -119,7 +120,7 @@ function blankWeek(template: WeeklySlot[]): WeeklySlot[] {
   }))
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// --- Component ---------------------------------------------------------------
 
 export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyPlanningProps) {
   const currentWeekKey = todayWeekKey()
@@ -127,7 +128,8 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
 
   // weekOffset: 0 = this week, -1 = prev, +1 = next, etc.
   const [weekOffset,   setWeekOffset]   = useState(0)
-  const [historyCache, setHistoryCache] = useState<Record<string, WeeklySlot[]>>({})
+  // cellCache: weekKey -> { jam -> { hari -> value } }
+  const [cellCache, setCellCache] = useState<Record<string, Record<string, Record<string, string>>>>({})
   const [loadingWeek,  setLoadingWeek]  = useState(false)
 
   // Which Monday is being viewed
@@ -136,28 +138,51 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
   const isCurrentWeek = viewWeekKey === currentWeekKey
   const isPastWeek    = viewMonday < currentMonday
 
-  // Slots to display: current week from prop, others from cache
+  // -- Load sel minggu ini saat pertama mount --------------------------------
+  useEffect(() => {
+    fetchWeeklyCells(userId, currentWeekKey)
+      .then((cells) => {
+        setCellCache((c) => ({ ...c, [currentWeekKey]: cells }))
+        // Merge ke slots prop (current week)
+        onUpdate(mergeCells(WEEK_TEMPLATE, cells))
+      })
+      .catch(() => {/* gunakan template kosong */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, currentWeekKey])
+
+  // Merge template dengan sel dari DB untuk minggu yang ditampilkan
+  function mergeCells(template: WeeklySlot[], cells: Record<string, Record<string, string>>): WeeklySlot[] {
+    return template.map((s) => ({
+      ...s,
+      senin:   cells[s.jam]?.senin   ?? s.senin,
+      selasa:  cells[s.jam]?.selasa  ?? s.selasa,
+      rabu:    cells[s.jam]?.rabu    ?? s.rabu,
+      kamis:   cells[s.jam]?.kamis   ?? s.kamis,
+      jumat:   cells[s.jam]?.jumat   ?? s.jumat,
+    }))
+  }
+
   const viewSlots: WeeklySlot[] = isCurrentWeek
     ? slots
-    : (historyCache[viewWeekKey] ?? blankWeek(slots))
+    : mergeCells(WEEK_TEMPLATE, cellCache[viewWeekKey] ?? {})
 
-  // ── Fetch past/future week from DB when navigating ───────────────────────
+  // -- Fetch sel untuk minggu non-current dari DB ---------------------------
   useEffect(() => {
     if (isCurrentWeek) return
-    if (historyCache[viewWeekKey]) return   // already loaded
+    if (cellCache[viewWeekKey] !== undefined) return  // already loaded
 
     setLoadingWeek(true)
-    fetchWeeklySlots(userId, viewWeekKey)
-      .then((fetched: WeeklySlot[]) => {
-        setHistoryCache((c) => ({ ...c, [viewWeekKey]: fetched }))
+    fetchWeeklyCells(userId, viewWeekKey)
+      .then((cells) => {
+        setCellCache((c) => ({ ...c, [viewWeekKey]: cells }))
       })
       .catch(() => {
-        // silently fall back to blank week; already initialised above
+        setCellCache((c) => ({ ...c, [viewWeekKey]: {} }))
       })
       .finally(() => setLoadingWeek(false))
-  }, [viewWeekKey, isCurrentWeek, historyCache])
+  }, [viewWeekKey, isCurrentWeek, cellCache])
 
-  // ── Modal state ──────────────────────────────────────────────────────────
+  // -- Modal state ----------------------------------------------------------
   const [slotOpen,   setSlotOpen]   = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [editSlotId, setEditSlotId] = useState<string | null>(null)
@@ -183,7 +208,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
   const editingParsed   = parseSlotValue(editingRaw)
   const isEditing       = editingParsed !== "" && editingParsed !== "ISTIRAHAT"
 
-  // ── Open slot modal ───────────────────────────────────────────────────────
+  // -- Open slot modal -------------------------------------------------------
   const openSlot = (slotId: string, day: DayKey, rawValue: string) => {
     if (!isCurrentWeek) return   // past/future weeks are read-only
     const parsed = parseSlotValue(rawValue)
@@ -207,20 +232,20 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
     setSlotOpen(true)
   }
 
-  // ── Optimistic update (current week only) ────────────────────────────────
+  // -- Optimistic update (current week only) --------------------------------
   const updateSlot = async (slotId: string, day: DayKey, value: string): Promise<boolean> => {
     const snapshot = slots
     const updated  = slots.map((s) => s.id === slotId ? { ...s, [day]: value } : s)
     onUpdate(updated)
 
-    const target = updated.find((s) => s.id === slotId)
-    if (!target) {
+    const slot = updated.find((s) => s.id === slotId)
+    if (!slot) {
       onUpdate(snapshot)
       toast.error("Slot tidak ditemukan. Perubahan dibatalkan.")
       return false
     }
     try {
-      await upsertWeeklySlot(target, currentWeekKey, userId)
+      await upsertWeeklyCell(userId, currentWeekKey, slot.jam, day, value)
       return true
     } catch {
       onUpdate(snapshot)
@@ -261,7 +286,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
     if (ok) { setSlotOpen(false); toast.success("Jadwal dihapus") }
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
+  // -- Stats -----------------------------------------------------------------
   const filledCount = viewSlots
     .filter((s) => s.jam >= "08:00" && s.jam <= "16:00")
     .reduce((n, s) =>
@@ -271,7 +296,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
       }).length, 0
     )
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
   return (
     <>
       <Card className="border-border/60 shadow-sm overflow-hidden">
@@ -447,7 +472,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
                               </button>
                             ) : (
                               <div className="w-full h-10 rounded-lg border border-dashed border-border/20 flex items-center justify-center">
-                                <span className="text-[10px] text-muted-foreground/25">—</span>
+                                <span className="text-[10px] text-muted-foreground/25">--</span>
                               </div>
                             )}
                           </td>
@@ -461,7 +486,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
         </CardContent>
       </Card>
 
-      {/* ─── Edit/Add Modal (current week only) ─────────────────────────────── */}
+      {/* --- Edit/Add Modal (current week only) ------------------------------- */}
       <Dialog open={slotOpen} onOpenChange={(open) => { if (!saving) setSlotOpen(open) }}>
         <DialogContent className="sm:max-w-md bg-card">
           <DialogHeader>
@@ -473,7 +498,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
           <div className="flex flex-col gap-3 py-1">
             <div className="flex items-center gap-2 text-sm rounded-lg bg-muted/30 px-3 py-2">
               <span className="font-extrabold text-foreground capitalize">{editDay}</span>
-              <span className="text-muted-foreground">—</span>
+              <span className="text-muted-foreground">--</span>
               <span className="font-extrabold text-foreground">{currentSlot?.jam}</span>
               <span className="ml-auto text-[10px] font-bold text-[#5a2080] bg-[#f5eeff] rounded-full px-2 py-0.5">
                 {weekRangeLabel(viewMonday)}
@@ -553,7 +578,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
                   <Select value={manualDept} onValueChange={setManualDept}>
                     <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Pilih departemen (opsional)..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">— Tidak ada —</SelectItem>
+                      <SelectItem value="__none__">-- Tidak ada --</SelectItem>
                       {departments.map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -597,7 +622,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
         </DialogContent>
       </Dialog>
 
-      {/* ─── WhatsApp Modal ──────────────────────────────────────────────────── */}
+      {/* --- WhatsApp Modal ---------------------------------------------------- */}
       <Dialog open={waOpen} onOpenChange={setWaOpen}>
         <DialogContent className="sm:max-w-sm bg-card">
           <DialogHeader>

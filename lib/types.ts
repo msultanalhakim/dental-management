@@ -180,7 +180,7 @@ export function formatDateWithDay(dateStr: string): string {
 export const formatDateDDMMYYYY = formatDateWithDay
 
 // ─── Default Data ──────────────────────────────────────────────────────────────
-export const DEFAULT_WEEKLY: WeeklySlot[] = [
+export const WEEK_TEMPLATE: WeeklySlot[] = [
   { id: "w1",  jam: "08:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
   { id: "w2",  jam: "09:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
   { id: "w3",  jam: "10:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
@@ -191,3 +191,5 @@ export const DEFAULT_WEEKLY: WeeklySlot[] = [
   { id: "w8",  jam: "15:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
   { id: "w9",  jam: "16:00", senin: "", selasa: "", rabu: "", kamis: "", jumat: ""},
 ]
+/** @deprecated gunakan WEEK_TEMPLATE */
+export const DEFAULT_WEEKLY = WEEK_TEMPLATE

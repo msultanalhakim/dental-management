@@ -21,12 +21,12 @@ import { ImageCropModal } from "./image-crop-modal"
 import type { Department, Appointment, WeeklySlot } from "@/lib/types"
 import { downloadXlsx, type XlsxSheet } from "@/lib/xlsx-writer"
 import {
-  DEFAULT_WEEKLY,
+  WEEK_TEMPLATE,
   parseSlotValue,
 } from "@/lib/types"
 import {
-  fetchDepartments, fetchAppointments, fetchWeeklySlots,
-  upsertDepartment, deleteDepartment, upsertWeeklySlot,
+  fetchDepartments, fetchAppointments,
+  upsertDepartment, deleteDepartment,
 } from "@/lib/supabase-queries"
 import { supabase } from "@/lib/supabase"
 import { DepartmentCard } from "./department-card"
@@ -662,7 +662,9 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
   const isAdmin = currentUser.role === "admin"
   const [departments, setDepartments] = useState<Department[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [weeklySlots, setWeeklySlots] = useState<WeeklySlot[]>(DEFAULT_WEEKLY)
+  // Weekly slots: template hardcoded, DB hanya simpan sel terisi (sparse)
+  // Untuk minggu ini, dikelola langsung oleh WeeklyPlanning component
+  const [weeklySlots, setWeeklySlots] = useState<WeeklySlot[]>(WEEK_TEMPLATE)
   const [loading, setLoading] = useState(true)
   const [addDeptOpen, setAddDeptOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard")
@@ -678,27 +680,15 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
     async function loadAll() {
       setLoading(true)
       try {
-        const [depts, appts, slots, brandData] = await Promise.all([
+        const [depts, appts, brandData] = await Promise.all([
           fetchDepartments(currentUser.email),
           fetchAppointments(currentUser.email),
-          fetchWeeklySlots(currentUser.email),
           loadBrand(currentUser.email),
         ])
         if (depts.length > 0) setDepartments(depts)
         if (appts.length > 0) setAppointments(appts)
         setBrand(brandData)
-
-        if (slots.length >= DEFAULT_WEEKLY.length) {
-          setWeeklySlots(slots)
-        } else if (slots.length === 0) {
-          setWeeklySlots(DEFAULT_WEEKLY)
-          const monday = new Date(); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
-          const weekKey = monday.toISOString().slice(0, 10)
-          Promise.all(DEFAULT_WEEKLY.map((s) => upsertWeeklySlot(s, weekKey, currentUser.email))).catch(() => null)
-        } else {
-          console.warn(`Weekly slots: DB has ${slots.length} rows (expected ${DEFAULT_WEEKLY.length}). Using defaults.`)
-          setWeeklySlots(DEFAULT_WEEKLY)
-        }
+        // Weekly slots untuk minggu ini di-load oleh WeeklyPlanning component
       } catch { /* stay on defaults */ } finally { setLoading(false) }
     }
     loadAll()
