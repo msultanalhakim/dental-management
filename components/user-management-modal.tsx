@@ -379,7 +379,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                                   Nonaktif
                                 </span>
                               )}
-                              {!user.canUploadPhoto && (
+                              {!user.canUploadPhoto && user.role !== "admin" && (
                                 <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">
                                   <Camera className="h-2.5 w-2.5" />Foto Off
                                 </span>
@@ -398,9 +398,10 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                         <div className="flex items-center gap-1 shrink-0 ml-2">
                           <button
                             onClick={() => handleTogglePhoto(user)}
-                            className="rounded-lg p-1.5 transition-colors"
-                            style={{ color: user.canUploadPhoto ? "#1a6010" : "#888" }}
-                            title={user.canUploadPhoto ? "Nonaktifkan izin foto" : "Aktifkan izin foto"}
+                            disabled={user.role === "admin"}
+                            className="rounded-lg p-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            style={{ color: user.role === "admin" ? "#1a6010" : user.canUploadPhoto ? "#1a6010" : "#888" }}
+                            title={user.role === "admin" ? "Admin selalu bisa upload foto" : user.canUploadPhoto ? "Cabut izin foto" : "Berikan izin foto"}
                           >
                             <Camera className="h-4 w-4" />
                           </button>

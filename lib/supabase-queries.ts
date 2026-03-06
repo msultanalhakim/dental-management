@@ -98,6 +98,23 @@ export async function verifyUserLogin(
   return { status: "invalid" }
 }
 
+// Fetch permissions terkini langsung dari DB (untuk refresh tanpa logout)
+export async function fetchUserPermissions(
+  email: string
+): Promise<{ role: "admin" | "user"; canUploadPhoto: boolean } | null> {
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("role, can_upload_photo, is_active, status")
+    .eq("email", email)
+    .maybeSingle()
+  if (error || !data) return null
+  if (data.is_active === false || data.status !== "approved") return null
+  return {
+    role: (data.role as "admin" | "user") ?? "user",
+    canUploadPhoto: data.role === "admin" ? true : data.can_upload_photo !== false,
+  }
+}
+
 // ─── ADMIN: KELOLA PENGGUNA ───────────────────────────────────────────────────
 
 export async function fetchPendingUsers(): Promise<AppUser[]> {

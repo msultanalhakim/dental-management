@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/login-form"
 import { RegisterForm } from "@/components/register-form"
 import { Dashboard } from "@/components/dashboard"
 import { supabase } from "@/lib/supabase"
+import { fetchUserPermissions } from "@/lib/supabase-queries"
 
 // ─── Session helpers (Supabase app_settings, key = "session:<email>") ─────────
 
@@ -94,10 +95,20 @@ export default function Home() {
 
       const session = await getSession(email)
       if (session?.loggedIn && session.date === getTodayString() && session.email) {
+        // Re-fetch permissions terkini dari DB — bukan dari cache session
+        // Ini memastikan perubahan canUploadPhoto/role langsung berlaku saat refresh
+        const perms = await fetchUserPermissions(session.email)
+        if (!perms) {
+          // Akun dinonaktifkan atau dihapus sejak login terakhir
+          await clearSession(email)
+          removeLastEmail()
+          setMounted(true)
+          return
+        }
         setCurrentUser({
           email: session.email,
-          role: session.role ?? "user",
-          canUploadPhoto: session.canUploadPhoto ?? true,
+          role: perms.role,
+          canUploadPhoto: perms.canUploadPhoto,
         })
         setView("dashboard")
       } else if (session) {
