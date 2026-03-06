@@ -62,7 +62,7 @@ export async function registerUser({
 // ─── USER LOGIN (email + password, status harus 'approved') ──────────────────
 
 export type LoginResult =
-  | { status: "ok"; role: "admin" | "user" }
+  | { status: "ok"; role: "admin" | "user"; canUploadPhoto: boolean }
   | { status: "pending" }
   | { status: "rejected" }
   | { status: "invalid" }
@@ -73,16 +73,26 @@ export async function verifyUserLogin(
 ): Promise<LoginResult> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("password_hash, status, role")
+    .select("password_hash, status, role, can_upload_photo, is_active")
     .eq("email", email)
     .maybeSingle()
 
   if (error || !data) return { status: "invalid" }
 
-  const match = await bcryptjs.compare(password, data.password_hash)
+  // Tolak jika akun dinonaktifkan
+  if (data.is_active === false) return { status: "rejected" }
+
+  const hash: string = (data.password_hash as string) ?? ""
+  if (!hash) return { status: "invalid" }
+
+  const match = await bcryptjs.compare(password, hash)
   if (!match) return { status: "invalid" }
 
-  if (data.status === "approved") return { status: "ok", role: (data.role as "admin" | "user") ?? "user" }
+  if (data.status === "approved") return {
+    status: "ok",
+    role: (data.role as "admin" | "user") ?? "user",
+    canUploadPhoto: data.can_upload_photo !== false,
+  }
   if (data.status === "pending") return { status: "pending" }
   if (data.status === "rejected") return { status: "rejected" }
   return { status: "invalid" }
@@ -147,6 +157,7 @@ function rowToAppUser(row: Record<string, unknown>): AppUser {
     created_at: (row.created_at as string) ?? "",
     role: (row.role as "admin" | "user") ?? "user",
     isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
+    canUploadPhoto: row.can_upload_photo !== undefined ? Boolean(row.can_upload_photo) : true,
     displayName: (row.nama as string) ?? email,
     username: email.split("@")[0],
   }
@@ -157,7 +168,7 @@ function rowToAppUser(row: Record<string, unknown>): AppUser {
 export async function fetchUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("id, nama, email, status, created_at, role, is_active")
+    .select("id, nama, email, status, created_at, role, is_active, can_upload_photo")
     .order("created_at", { ascending: true })
   if (error || !data) return []
   return (data as Record<string, unknown>[]).map(rowToAppUser)
@@ -192,7 +203,7 @@ export async function createUser(
       role,
       is_active: true,
     })
-    .select("id, nama, email, status, created_at, role, is_active")
+    .select("id, nama, email, status, created_at, role, is_active, can_upload_photo")
     .single()
 
   if (error || !data) return null
@@ -201,12 +212,13 @@ export async function createUser(
 
 export async function updateUser(
   id: string,
-  patch: Partial<{ displayName: string; role: "admin" | "user"; isActive: boolean }>,
+  patch: Partial<{ displayName: string; role: "admin" | "user"; isActive: boolean; canUploadPhoto: boolean }>,
 ): Promise<void> {
   const dbPatch: Record<string, unknown> = {}
   if (patch.displayName !== undefined) dbPatch.nama = patch.displayName
   if (patch.role !== undefined) dbPatch.role = patch.role
   if (patch.isActive !== undefined) dbPatch.is_active = patch.isActive
+  if (patch.canUploadPhoto !== undefined) dbPatch.can_upload_photo = patch.canUploadPhoto
 
   const { error } = await supabase
     .from("app_users")
@@ -217,11 +229,13 @@ export async function updateUser(
 
 export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
   const password_hash = await bcryptjs.hash(newPassword, 10)
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("app_users")
     .update({ password_hash })
     .eq("id", id)
-  if (error) throw error
+    .select("id")
+  if (error) throw new Error(`Gagal update password: ${error.message}`)
+  if (!data || data.length === 0) throw new Error("User tidak ditemukan atau tidak ada perubahan")
 }
 
 // ─── DEPARTMENTS ─────────────────────────────────────────────────────────────
@@ -247,6 +261,7 @@ export async function fetchDepartments(userId: string): Promise<Department[]> {
   const { data: photos } = await supabase
     .from("patient_photos")
     .select("*")
+    .eq("user_id", userId)
 
   // pasienList per-user: satu row per (patient_id, user_id)
   const { data: userPatientData } = await supabase
@@ -401,12 +416,12 @@ export async function deletePatient(id: string) {
 
 // ─── PHOTOS ──────────────────────────────────────────────────────────────────
 
-export async function uploadPhotoBase64(patientId: string, base64: string): Promise<Photo | null> {
+export async function uploadPhotoBase64(patientId: string, base64: string, userId: string): Promise<Photo | null> {
   const res = await fetch(base64)
   const blob = await res.blob()
 
-  if (blob.size > 5 * 1024 * 1024) {
-    throw new Error("Ukuran foto maksimum 5 MB")
+  if (blob.size > 1 * 1024 * 1024) {
+    throw new Error("Ukuran foto maksimum 1 MB")
   }
 
   const ext = blob.type.split("/")[1] || "jpg"
@@ -424,7 +439,7 @@ export async function uploadPhotoBase64(patientId: string, base64: string): Prom
 
   const { data, error } = await supabase
     .from("patient_photos")
-    .insert({ patient_id: patientId, storage_path: path, photo_url: publicUrl })
+    .insert({ patient_id: patientId, storage_path: path, photo_url: publicUrl, user_id: userId })
     .select()
     .single()
 

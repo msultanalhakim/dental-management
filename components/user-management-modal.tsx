@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import {
   Users, Plus, Pencil, Trash2, Eye, EyeOff, LockKeyhole, ShieldCheck, User,
-  ToggleLeft, ToggleRight,
+  ToggleLeft, ToggleRight, Camera,
 } from "lucide-react"
 import type { AppUser } from "@/lib/types"
 import {
@@ -43,6 +43,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
   const [formUsername, setFormUsername] = useState("")
   const [formDisplayName, setFormDisplayName] = useState("")
   const [formRole, setFormRole] = useState<"admin" | "user">("user")
+  const [formCanUploadPhoto, setFormCanUploadPhoto] = useState(true)
   const [formPassword, setFormPassword] = useState("")
   const [formConfirmPw, setFormConfirmPw] = useState("")
   const [showPw, setShowPw] = useState(false)
@@ -67,6 +68,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     setFormUsername("")
     setFormDisplayName("")
     setFormRole("user")
+    setFormCanUploadPhoto(true)
     setFormPassword("")
     setFormConfirmPw("")
     setShowPw(false)
@@ -79,6 +81,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     setEditingUser(user)
     setFormDisplayName(user.displayName)
     setFormRole(user.role)
+    setFormCanUploadPhoto(user.canUploadPhoto)
     setView("edit")
   }
 
@@ -113,7 +116,7 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
     if (!editingUser) return
     setSaving(true)
     try {
-      await updateUser(editingUser.id, { displayName: formDisplayName, role: formRole })
+      await updateUser(editingUser.id, { displayName: formDisplayName, role: formRole, canUploadPhoto: formCanUploadPhoto })
       toast.success("User berhasil diperbarui")
       await loadUsers()
       setView("list")
@@ -133,8 +136,9 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
       await changeUserPassword(editingUser.id, formPassword)
       toast.success(`Password "${editingUser.username}" berhasil diubah`)
       setView("list")
-    } catch {
-      toast.error("Gagal mengubah password")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal mengubah password"
+      toast.error(msg)
     } finally {
       setSaving(false)
     }
@@ -148,6 +152,16 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
       await loadUsers()
     } catch {
       toast.error("Gagal mengubah status user")
+    }
+  }
+
+  async function handleTogglePhoto(user: AppUser) {
+    try {
+      await updateUser(user.id, { canUploadPhoto: !user.canUploadPhoto })
+      toast.success(`Fitur foto "${user.username}" ${!user.canUploadPhoto ? "diaktifkan" : "dinonaktifkan"}`)
+      await loadUsers()
+    } catch {
+      toast.error("Gagal mengubah fitur foto")
     }
   }
 
@@ -261,6 +275,11 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                                   Nonaktif
                                 </span>
                               )}
+                              {!user.canUploadPhoto && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">
+                                  <Camera className="h-2.5 w-2.5" />Foto Off
+                                </span>
+                              )}
                               {user.id === currentUserId && (
                                 <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-[#c8ecc0] text-[#1a6010]">
                                   Saya
@@ -272,11 +291,21 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {/* Toggle foto */}
+                          <button
+                            onClick={() => handleTogglePhoto(user)}
+                            className="rounded-lg p-1.5 transition-colors"
+                            style={{ color: user.canUploadPhoto ? "#1a6010" : "#888" }}
+                            title={user.canUploadPhoto ? "Nonaktifkan fitur foto" : "Aktifkan fitur foto"}
+                          >
+                            <Camera className="h-4 w-4" />
+                          </button>
+                          {/* Toggle active */}
                           <button
                             onClick={() => handleToggleActive(user)}
                             disabled={user.id === currentUserId}
                             className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-30"
-                            title={user.isActive ? "Nonaktifkan" : "Aktifkan"}
+                            title={user.isActive ? "Nonaktifkan akun" : "Aktifkan akun"}
                           >
                             {user.isActive
                               ? <ToggleRight className="h-4 w-4 text-[#1a6010]" />
@@ -347,6 +376,29 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Toggle fitur foto */}
+                <div className="flex items-center justify-between rounded-xl border border-border/50 bg-background px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${formCanUploadPhoto ? "bg-[#e8f5e3]" : "bg-muted"}`}>
+                      <Camera className={`h-4 w-4 ${formCanUploadPhoto ? "text-[#1a6010]" : "text-muted-foreground"}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-foreground">Fitur Foto Requirement</p>
+                      <p className="text-xs text-muted-foreground">Upload foto pada kolom requirement</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormCanUploadPhoto(!formCanUploadPhoto)}
+                    className="shrink-0"
+                  >
+                    {formCanUploadPhoto
+                      ? <ToggleRight className="h-6 w-6 text-[#1a6010]" />
+                      : <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                    }
+                  </button>
+                </div>
+
                 <PasswordField label="Password" value={formPassword} onChange={setFormPassword} show={showPw} onToggleShow={() => setShowPw(!showPw)} />
                 <PasswordField label="Konfirmasi Password" value={formConfirmPw} onChange={setFormConfirmPw} show={showConfirm} onToggleShow={() => setShowConfirm(!showConfirm)} placeholder="Ulangi password" />
 
@@ -391,6 +443,29 @@ export function UserManagementModal({ open, onClose, currentUserId }: UserManage
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Toggle fitur foto */}
+                <div className="flex items-center justify-between rounded-xl border border-border/50 bg-background px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${formCanUploadPhoto ? "bg-[#e8f5e3]" : "bg-muted"}`}>
+                      <Camera className={`h-4 w-4 ${formCanUploadPhoto ? "text-[#1a6010]" : "text-muted-foreground"}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-foreground">Fitur Foto Requirement</p>
+                      <p className="text-xs text-muted-foreground">Upload foto pada kolom requirement</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormCanUploadPhoto(!formCanUploadPhoto)}
+                    className="shrink-0"
+                  >
+                    {formCanUploadPhoto
+                      ? <ToggleRight className="h-6 w-6 text-[#1a6010]" />
+                      : <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                    }
+                  </button>
+                </div>
+
                 <div className="flex gap-2 pt-1">
                   <Button variant="outline" onClick={() => setView("list")} className="flex-1 font-bold border-border">Batal</Button>
                   <Button onClick={handleEdit} disabled={saving} className="flex-1 bg-primary text-primary-foreground font-bold">

@@ -39,7 +39,7 @@ type TabKey = "dashboard" | "appointments" | "weekly"
 
 interface DashboardProps {
   onLogout: () => void
-  currentUser: { email: string; role: "admin" | "user" }
+  currentUser: { email: string; role: "admin" | "user"; canUploadPhoto: boolean }
 }
 
 // ─── Brand Settings ────────────────────────────────────────────────────────────
@@ -914,6 +914,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
                       searchQuery={searchDept.trim()}
                       isAdmin={isAdmin}
                       userId={currentUser.email}
+                      canUploadPhoto={currentUser.canUploadPhoto}
                     />
                   ))}
                   {filteredDepartments.length === 0 && searchDept && (

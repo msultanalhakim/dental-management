@@ -7,15 +7,16 @@ import { Dashboard } from "@/components/dashboard"
 
 const SESSION_KEY = "dental_clinic_session"
 
-function getTodayString(): string {
-  return new Date().toISOString().split("T")[0]
-}
-
-export interface SessionData {
+interface SessionData {
   loggedIn: boolean
   date: string
   email: string
   role: "admin" | "user"
+  canUploadPhoto: boolean
+}
+
+function getTodayString(): string {
+  return new Date().toISOString().split("T")[0]
 }
 
 function getStoredSession(): SessionData | null {
@@ -29,11 +30,14 @@ function getStoredSession(): SessionData | null {
   }
 }
 
-function saveSession(email: string, role: "admin" | "user") {
-  localStorage.setItem(
-    SESSION_KEY,
-    JSON.stringify({ loggedIn: true, date: getTodayString(), email, role })
-  )
+function saveSession(email: string, role: "admin" | "user", canUploadPhoto: boolean) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    loggedIn: true,
+    date: getTodayString(),
+    email,
+    role,
+    canUploadPhoto,
+  }))
 }
 
 function clearSession() {
@@ -45,12 +49,16 @@ type View = "login" | "register" | "dashboard"
 export default function Home() {
   const [view, setView] = useState<View>("login")
   const [mounted, setMounted] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{ email: string; role: "admin" | "user" } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{
+    email: string
+    role: "admin" | "user"
+    canUploadPhoto: boolean
+  } | null>(null)
 
   useEffect(() => {
     const session = getStoredSession()
-    if (session?.loggedIn && session.date === getTodayString()) {
-      setCurrentUser({ email: session.email, role: session.role ?? "user" })
+    if (session?.loggedIn && session.date === getTodayString() && session.email) {
+      setCurrentUser({ email: session.email, role: session.role ?? "user", canUploadPhoto: session.canUploadPhoto ?? true })
       setView("dashboard")
     } else if (session?.loggedIn) {
       clearSession()
@@ -71,9 +79,9 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [view])
 
-  const handleLogin = (email: string, role: "admin" | "user") => {
-    saveSession(email, role)
-    setCurrentUser({ email, role })
+  const handleLogin = (email: string, role: "admin" | "user", canUploadPhoto: boolean) => {
+    saveSession(email, role, canUploadPhoto)
+    setCurrentUser({ email, role, canUploadPhoto })
     setView("dashboard")
   }
 
@@ -84,11 +92,7 @@ export default function Home() {
   }
 
   if (!mounted) return null
-  if (view === "register") return (
-    <RegisterForm onBackToLogin={() => setView("login")} />
-  )
-  if (view === "login") return (
-    <LoginForm onLogin={handleLogin} onGoRegister={() => setView("register")} />
-  )
-  return <Dashboard onLogout={handleLogout} currentUser={currentUser ?? { email: "", role: "user" }} />
+  if (view === "register") return <RegisterForm onBackToLogin={() => setView("login")} />
+  if (view === "login") return <LoginForm onLogin={handleLogin} onGoRegister={() => setView("register")} />
+  return <Dashboard onLogout={handleLogout} currentUser={currentUser ?? { email: "", role: "user", canUploadPhoto: true }} />
 }

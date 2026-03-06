@@ -376,6 +376,7 @@ interface PatientTableProps {
   onReorder?: (newPatients: Patient[]) => void
   searchQuery?: string
   isAdmin?: boolean
+  canUploadPhoto?: boolean
 }
 
 // ─── Highlight matching text ──────────────────────────────────────────────────
@@ -409,11 +410,12 @@ interface SortableRowProps {
   onOpenPasienList: (patient: Patient) => void
   searchQuery?: string
   isAdmin?: boolean
+  canUploadPhoto?: boolean
 }
 
 function SortableRow({
   patient, onStatusChange, onEditPatient, onDeletePatient,
-  onOpenPhotos, onOpenWA, onOpenPasienList, searchQuery = "", isAdmin = false,
+  onOpenPhotos, onOpenWA, onOpenPasienList, searchQuery = "", isAdmin = false, canUploadPhoto = true,
 }: SortableRowProps) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -519,17 +521,21 @@ function SortableRow({
 
       {/* Photos */}
       <td className="px-3 py-2 text-center">
-        <button
-          onClick={() => onOpenPhotos(patient)}
-          className="relative inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-        >
-          <ImageIcon className="h-4 w-4" />
-          {patient.photos.length > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-              {patient.photos.length}
-            </span>
-          )}
-        </button>
+        {canUploadPhoto ? (
+          <button
+            onClick={() => onOpenPhotos(patient)}
+            className="relative inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <ImageIcon className="h-4 w-4" />
+            {patient.photos.length > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                {patient.photos.length}
+              </span>
+            )}
+          </button>
+        ) : (
+          <span className="text-muted-foreground/30 text-xs">—</span>
+        )}
       </td>
 
       {/* Actions */}
@@ -551,7 +557,7 @@ function SortableRow({
 
 function PatientTable({
   patients, onStatusChange, onEditPatient, onDeletePatient, onOpenPhotos, onOpenWA, onOpenPasienList,
-  onReorder, searchQuery = "", isAdmin = false,
+  onReorder, searchQuery = "", isAdmin = false, canUploadPhoto = true,
 }: PatientTableProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -596,6 +602,7 @@ function PatientTable({
                   onOpenPasienList={onOpenPasienList}
                   searchQuery={searchQuery}
                   isAdmin={isAdmin}
+                  canUploadPhoto={canUploadPhoto}
                 />
               ))}
             </tbody>
@@ -615,9 +622,10 @@ interface DepartmentCardProps {
   searchQuery?: string
   isAdmin?: boolean
   userId: string
+  canUploadPhoto?: boolean
 }
 
-export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "", isAdmin = false, userId }: DepartmentCardProps) {
+export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "", isAdmin = false, userId, canUploadPhoto = true }: DepartmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(
     new Set(department.subDepartments?.map((s) => s.id) || [])
@@ -819,7 +827,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
 
   const handleAddPhoto = async (base64: string) => {
     if (!photoPatient) return
-    const photo = await uploadPhotoBase64(photoPatient.id, base64)
+    const photo = await uploadPhotoBase64(photoPatient.id, base64, userId)
     if (photo) {
       const newPhotos = [...photoPatient.photos, photo]
       setPhotoPatient({ ...photoPatient, photos: newPhotos })
@@ -977,6 +985,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                             onReorder={(newList) => handleReorderPatients(newList, sub.id)}
                             searchQuery={q}
                             isAdmin={isAdmin}
+                            canUploadPhoto={canUploadPhoto}
                           />
                         )
                       )}
@@ -1017,6 +1026,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                 onReorder={(newList) => handleReorderPatients(newList)}
                 searchQuery={q}
                 isAdmin={isAdmin}
+                canUploadPhoto={canUploadPhoto}
               />
             )}
           </CardContent>

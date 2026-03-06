@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ImagePlus, Trash2, ChevronLeft, ChevronRight, X, AlertCircle } from "lucide-react"
 import type { Photo } from "@/lib/types"
 
-const MAX_FILE_SIZE_MB = 5
+const MAX_FILE_SIZE_MB = 1
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 interface PhotoModalProps {

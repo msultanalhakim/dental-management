@@ -103,13 +103,46 @@ function getTodayDayKey(): DayKey | null {
   return map[new Date().getDay()] ?? null
 }
 
-function getDeptPatients(dept: Department): (Patient & { subDeptName?: string })[] {
+// Tipe flat untuk dropdown: satu item = satu individu pasien
+interface FlatPatient {
+  id: string           // PatientEntry.id
+  namaPasien: string
+  nomorTelp: string
+  requirementName: string
+  subDeptName?: string
+}
+
+function getDeptPatients(dept: Department): FlatPatient[] {
+  const result: FlatPatient[] = []
+
   if (dept.hasSubDepartments) {
-    return (dept.subDepartments || []).flatMap((sub) =>
-      sub.patients.map((p) => ({ ...p, subDeptName: sub.name }))
-    )
+    for (const sub of dept.subDepartments || []) {
+      for (const patient of sub.patients) {
+        for (const entry of patient.pasienList) {
+          result.push({
+            id: entry.id,
+            namaPasien: entry.namaPasien,
+            nomorTelp: entry.nomorTelp,
+            requirementName: patient.requirement,
+            subDeptName: sub.name,
+          })
+        }
+      }
+    }
+  } else {
+    for (const patient of dept.patients) {
+      for (const entry of patient.pasienList) {
+        result.push({
+          id: entry.id,
+          namaPasien: entry.namaPasien,
+          nomorTelp: entry.nomorTelp,
+          requirementName: patient.requirement,
+        })
+      }
+    }
   }
-  return dept.patients.filter((p) => p.hasPasien)
+
+  return result
 }
 
 /** Build a blank week (all slots empty) from a template */
@@ -545,7 +578,10 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
                           : deptPatients.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
                                 <span className="font-semibold">{p.namaPasien}</span>
-                                {p.subDeptName && <span className="text-muted-foreground text-xs ml-1">({p.subDeptName})</span>}
+                                <span className="text-muted-foreground text-xs ml-1">
+                                  — {p.requirementName}
+                                  {p.subDeptName && ` (${p.subDeptName})`}
+                                </span>
                               </SelectItem>
                             ))
                         }
@@ -556,7 +592,11 @@ export function WeeklyPlanning({ slots, onUpdate, departments, userId }: WeeklyP
                 {selectedPatient && (
                   <div className="rounded-lg bg-[#f0faea] border border-[#c8ecc0] px-3 py-2.5">
                     <p className="text-xs font-bold text-[#1a6010]">{selectedPatient.namaPasien}</p>
-                    {selectedDept && <p className="text-xs text-[#2d7a20]/70 mt-0.5">{selectedDept.name}</p>}
+                    <p className="text-xs text-[#2d7a20]/70 mt-0.5">
+                      {selectedDept?.name}
+                      {selectedPatient.subDeptName && ` › ${selectedPatient.subDeptName}`}
+                      {` · ${selectedPatient.requirementName}`}
+                    </p>
                     {selectedPatient.nomorTelp && <p className="text-xs text-[#2d7a20] mt-0.5">{selectedPatient.nomorTelp}</p>}
                   </div>
                 )}
