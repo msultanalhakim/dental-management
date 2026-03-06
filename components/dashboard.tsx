@@ -88,12 +88,14 @@ async function saveBrandSettings(email: string, b: BrandSettings): Promise<void>
     .upsert({ key: userKey, value: JSON.stringify(b) })
 }
 
-async function uploadLogoToStorage(file: File): Promise<string | null> {
+async function uploadLogoToStorage(file: File, email: string): Promise<string | null> {
   const ext = file.name.split(".").pop() || "png"
-  const path = `logo/clinic-logo.${ext}`
+  // Sanitize email to be safe as a path segment
+  const emailSlug = email.replace(/[^a-zA-Z0-9._-]/g, "_")
+  const path = `logo/${emailSlug}/profile.${ext}`
 
   const { error } = await supabase.storage
-    .from("patient-photos")   // reuse existing bucket, or create a separate one
+    .from("patient-photos")
     .upload(path, file, { contentType: file.type, upsert: true })
 
   if (error) return null
@@ -105,13 +107,14 @@ async function uploadLogoToStorage(file: File): Promise<string | null> {
   return publicUrl
 }
 
-async function deleteLogoFromStorage(): Promise<void> {
-  // Try both common extensions
+async function deleteLogoFromStorage(email: string): Promise<void> {
+  const emailSlug = email.replace(/[^a-zA-Z0-9._-]/g, "_")
+  // Try all common extensions for this user
   await supabase.storage.from("patient-photos").remove([
-    "logo/clinic-logo.png",
-    "logo/clinic-logo.jpg",
-    "logo/clinic-logo.jpeg",
-    "logo/clinic-logo.webp",
+    `logo/${emailSlug}/profile.png`,
+    `logo/${emailSlug}/profile.jpg`,
+    `logo/${emailSlug}/profile.jpeg`,
+    `logo/${emailSlug}/profile.webp`,
   ])
 }
 
@@ -300,11 +303,12 @@ function LogoutConfirmModal({ open, onClose, onConfirm }: { open: boolean; onClo
 }
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ open, onClose, brand, onSaveBrand }: {
+function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: {
   open: boolean
   onClose: () => void
   brand: BrandSettings
   onSaveBrand: (b: BrandSettings) => Promise<void>
+  currentUserEmail: string
 }) {
   const [activeSection, setActiveSection] = useState<"brand" | "password">("brand")
   const [title, setTitle] = useState(brand.title)
@@ -349,29 +353,29 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
   }
 
   const handleSaveBrand = async () => {
-    if (!title.trim()) { toast.error("Nama klinik tidak boleh kosong"); return }
+    if (!title.trim()) { toast.error("Nama tampilan tidak boleh kosong"); return }
     setLogoSaving(true)
     try {
       let finalLogoUrl = logoUrl
 
       // Upload new logo to storage if a new file was selected
       if (logoFile) {
-        const uploaded = await uploadLogoToStorage(logoFile)
-        if (!uploaded) { toast.error("Gagal mengunggah logo"); setLogoSaving(false); return }
+        const uploaded = await uploadLogoToStorage(logoFile, currentUserEmail)
+        if (!uploaded) { toast.error("Gagal mengunggah foto"); setLogoSaving(false); return }
         finalLogoUrl = uploaded
       }
 
       // If logo was cleared (preview null, no new file)
       if (!logoPreview && !logoFile) {
-        await deleteLogoFromStorage()
+        await deleteLogoFromStorage(currentUserEmail)
         finalLogoUrl = null
       }
 
       await onSaveBrand({ title: title.trim(), subtitle: subtitle.trim(), logoUrl: finalLogoUrl })
-      toast.success("Tampilan berhasil disimpan")
+      toast.success("Pengaturan tampilan berhasil disimpan")
       onClose()
     } catch {
-      toast.error("Gagal menyimpan tampilan")
+      toast.error("Gagal menyimpan pengaturan")
     } finally {
       setLogoSaving(false)
     }
@@ -408,7 +412,7 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
           </div>
           <div>
             <h2 className="text-lg font-extrabold text-foreground">Pengaturan</h2>
-            <p className="text-xs text-muted-foreground font-medium">Kustomisasi tampilan dan keamanan</p>
+            <p className="text-xs text-muted-foreground font-medium">Tampilan personal & keamanan akun</p>
           </div>
         </div>
 
@@ -432,14 +436,22 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
         <div className="px-6 pb-6 pt-4">
           {activeSection === "brand" && (
             <div className="flex flex-col gap-5">
-              {/* Logo */}
+              {/* Info banner */}
+              <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
+                <p className="text-xs font-bold text-primary">Tampilan Personal</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Pengaturan ini hanya berlaku untuk akun Anda. Setiap pengguna memiliki tampilan masing-masing.
+                </p>
+              </div>
+
+              {/* Foto profil */}
               <div className="flex flex-col gap-2">
-                <Label className="text-sm font-bold text-foreground">Logo / Foto Klinik</Label>
+                <Label className="text-sm font-bold text-foreground">Foto Profil / Logo</Label>
                 <div className="flex items-center gap-4">
                   {/* Preview */}
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-sm overflow-hidden border-2 border-border/40">
                     {logoPreview ? (
-                      <img src={logoPreview} alt="Logo" className="h-full w-full object-cover" />
+                      <img src={logoPreview} alt="Foto profil" className="h-full w-full object-cover" />
                     ) : (
                       <svg viewBox="0 0 32 32" fill="none" className="h-9 w-9" aria-hidden="true">
                         <path d="M16 3C11 3 7 7 7 11c0 2 .5 3.5 1.2 5l2.8 8c.5 1.5 1.5 2 2.5 2s2-.8 2.5-2l.5-1.5.5 1.5c.5 1.2 1.5 2 2.5 2s2-.5 2.5-2l2.8-8C24.5 14.5 25 13 25 11c0-4-4-8-9-8z" fill="currentColor" className="text-primary-foreground" />
@@ -478,27 +490,27 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
                 <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoSelect} className="hidden" />
               </div>
 
-              {/* Title */}
+              {/* Nama tampilan */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="clinic-title" className="text-sm font-bold text-foreground">Nama Klinik</Label>
+                <Label htmlFor="clinic-title" className="text-sm font-bold text-foreground">Nama Tampilan</Label>
                 <Input
                   id="clinic-title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Klinik Gigi"
+                  placeholder="Nama Anda / Nama Klinik"
                   className="bg-background h-10 font-medium"
                   maxLength={40}
                 />
               </div>
 
-              {/* Subtitle */}
+              {/* Sub-judul */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="clinic-subtitle" className="text-sm font-bold text-foreground">Sub-judul</Label>
                 <Input
                   id="clinic-subtitle"
                   value={subtitle}
                   onChange={(e) => setSubtitle(e.target.value)}
-                  placeholder="Manajemen Pasien"
+                  placeholder="Jabatan / Spesialisasi"
                   className="bg-background h-10 font-medium"
                   maxLength={50}
                 />
@@ -518,8 +530,8 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-extrabold text-foreground leading-tight">{title || "Klinik Gigi"}</p>
-                    <p className="text-[10px] font-medium text-muted-foreground leading-tight">{subtitle || "Manajemen Pasien"}</p>
+                    <p className="text-sm font-extrabold text-foreground leading-tight">{title || "Nama Anda"}</p>
+                    <p className="text-[10px] font-medium text-muted-foreground leading-tight">{subtitle || "Jabatan / Spesialisasi"}</p>
                   </div>
                 </div>
               </div>
@@ -529,7 +541,7 @@ function SettingsModal({ open, onClose, brand, onSaveBrand }: {
                 disabled={logoSaving}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold h-10"
               >
-                {logoSaving ? "Menyimpan..." : "Simpan Tampilan"}
+                {logoSaving ? "Menyimpan..." : "Simpan Pengaturan"}
               </Button>
             </div>
           )}
@@ -920,7 +932,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
 
       <AddDepartmentModal open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdd={handleAddDepartment} />
       <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={onLogout} />
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brand={brand} onSaveBrand={handleSaveBrand} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brand={brand} onSaveBrand={handleSaveBrand} currentUserEmail={currentUser.email} />
       <UserApprovalPanel open={userApprovalOpen} onClose={() => setUserApprovalOpen(false)} />
 
       <AlertDialog open={exportDeptConfirmOpen} onOpenChange={setExportDeptConfirmOpen}>
