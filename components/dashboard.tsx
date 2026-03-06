@@ -17,6 +17,7 @@ import {
   Settings, Upload, Eye, EyeOff, LockKeyhole, Users,
 } from "lucide-react"
 import { UserApprovalPanel } from "./user-approval-panel"
+import { ImageCropModal } from "./image-crop-modal"
 import type { Department, Appointment, WeeklySlot } from "@/lib/types"
 import { downloadXlsx, type XlsxSheet } from "@/lib/xlsx-writer"
 import {
@@ -319,6 +320,10 @@ function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: 
   const [logoSaving, setLogoSaving] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
 
+  // Crop modal state
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropOpen, setCropOpen] = useState(false)
+
   // Password change
   const [currentPw, setCurrentPw] = useState("")
   const [newPw, setNewPw] = useState("")
@@ -343,13 +348,24 @@ function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: 
   const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran logo maks 5 MB"); return }
-    setLogoFile(file)
-    // Show local preview immediately
+    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran foto maks 5 MB"); return }
+    // Read as base64 dan buka crop modal
     const reader = new FileReader()
-    reader.onloadend = () => setLogoPreview(reader.result as string)
+    reader.onloadend = () => {
+      setCropSrc(reader.result as string)
+      setCropOpen(true)
+    }
     reader.readAsDataURL(file)
     e.target.value = ""
+  }
+
+  const handleCropDone = (blob: Blob) => {
+    setCropOpen(false)
+    setCropSrc(null)
+    // Convert blob ke File dan preview URL
+    const croppedFile = new File([blob], "profile.png", { type: "image/png" })
+    setLogoFile(croppedFile)
+    setLogoPreview(URL.createObjectURL(blob))
   }
 
   const handleSaveBrand = async () => {
@@ -402,6 +418,7 @@ function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: 
   }
 
   return (
+  <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg bg-card max-h-[90vh] overflow-y-auto p-0">
         <DialogTitle className="sr-only">Pengaturan</DialogTitle>
@@ -618,6 +635,16 @@ function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: 
         </div>
       </DialogContent>
     </Dialog>
+
+    {cropSrc && (
+      <ImageCropModal
+        open={cropOpen}
+        onClose={() => { setCropOpen(false); setCropSrc(null) }}
+        imageSrc={cropSrc}
+        onCropDone={handleCropDone}
+      />
+    )}
+  </>
   )
 }
 
