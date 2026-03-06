@@ -375,6 +375,7 @@ interface PatientTableProps {
   onOpenPasienList: (patient: Patient) => void
   onReorder?: (newPatients: Patient[]) => void
   searchQuery?: string
+  isAdmin?: boolean
 }
 
 // ─── Highlight matching text ──────────────────────────────────────────────────
@@ -407,11 +408,12 @@ interface SortableRowProps {
   onOpenWA: (phone: string, name: string) => void
   onOpenPasienList: (patient: Patient) => void
   searchQuery?: string
+  isAdmin?: boolean
 }
 
 function SortableRow({
   patient, onStatusChange, onEditPatient, onDeletePatient,
-  onOpenPhotos, onOpenWA, onOpenPasienList, searchQuery = "",
+  onOpenPhotos, onOpenWA, onOpenPasienList, searchQuery = "", isAdmin = false,
 }: SortableRowProps) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -449,18 +451,20 @@ function SortableRow({
       {/* Requirement + Drag Handle */}
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5">
-          <button
-            {...attributes}
-            {...listeners}
-            onMouseDown={() => setIsGrabbing(true)}
-            onMouseUp={() => setIsGrabbing(false)}
-            onMouseLeave={() => setIsGrabbing(false)}
-            className="shrink-0 rounded p-0.5 text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors touch-none"
-            style={{ cursor: isGrabbing ? "grabbing" : "grab" }}
-            title="Geser untuk ubah urutan"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          {isAdmin && (
+            <button
+              {...attributes}
+              {...listeners}
+              onMouseDown={() => setIsGrabbing(true)}
+              onMouseUp={() => setIsGrabbing(false)}
+              onMouseLeave={() => setIsGrabbing(false)}
+              className="shrink-0 rounded p-0.5 text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors touch-none"
+              style={{ cursor: isGrabbing ? "grabbing" : "grab" }}
+              title="Geser untuk ubah urutan"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
           <HighlightText text={patient.requirement} query={searchQuery} />
         </div>
       </td>
@@ -529,23 +533,25 @@ function SortableRow({
       </td>
 
       {/* Actions */}
-      <td className="px-3 py-2 text-center">
-        <div className="flex items-center justify-center gap-0.5">
-          <button onClick={() => onEditPatient(patient)} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={() => onDeletePatient(patient.id)} className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </td>
+      {isAdmin && (
+        <td className="px-3 py-2 text-center">
+          <div className="flex items-center justify-center gap-0.5">
+            <button onClick={() => onEditPatient(patient)} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => onDeletePatient(patient.id)} className="rounded-md p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      )}
     </tr>
   )
 }
 
 function PatientTable({
   patients, onStatusChange, onEditPatient, onDeletePatient, onOpenPhotos, onOpenWA, onOpenPasienList,
-  onReorder, searchQuery = "",
+  onReorder, searchQuery = "", isAdmin = false,
 }: PatientTableProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -574,7 +580,7 @@ function PatientTable({
                 <th className="px-3 py-2 text-right font-bold text-muted-foreground text-xs min-w-45">Status</th>
                 <th className="px-3 py-2 text-left font-bold text-muted-foreground text-xs min-w-37.5">Pasien</th>
                 <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-14">Foto</th>
-                <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-16">Aksi</th>
+                {isAdmin && <th className="px-3 py-2 text-center font-bold text-muted-foreground text-xs w-16">Aksi</th>}
               </tr>
             </thead>
             <tbody>
@@ -589,6 +595,7 @@ function PatientTable({
                   onOpenWA={onOpenWA}
                   onOpenPasienList={onOpenPasienList}
                   searchQuery={searchQuery}
+                  isAdmin={isAdmin}
                 />
               ))}
             </tbody>
@@ -606,9 +613,10 @@ interface DepartmentCardProps {
   onUpdate: (department: Department) => void
   onDeleteDepartment: () => void
   searchQuery?: string
+  isAdmin?: boolean
 }
 
-export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "" }: DepartmentCardProps) {
+export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searchQuery = "", isAdmin = false }: DepartmentCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(
     new Set(department.subDepartments?.map((s) => s.id) || [])
@@ -906,19 +914,21 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
               </div>
             </button>
             <div className="flex items-center gap-2 shrink-0">
-              {!hasSubDepartments && (
+              {isAdmin && !hasSubDepartments && (
                 <Button size="sm" variant="outline" onClick={() => handleAddPatient()} className="h-8 gap-1 border-border text-foreground text-xs font-bold">
                   <Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Requirement</span>
                 </Button>
               )}
-              {hasSubDepartments && (
+              {isAdmin && hasSubDepartments && (
                 <Button size="sm" variant="outline" onClick={() => setAddSubDeptOpen(true)} className="h-8 gap-1 border-border text-foreground text-xs font-bold">
                   <Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Sub-Dept</span>
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => setDeleteDeptOpen(true)} className="h-8 border-border text-destructive hover:bg-destructive/10">
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {isAdmin && (
+                <Button size="sm" variant="outline" onClick={() => setDeleteDeptOpen(true)} className="h-8 border-border text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           </div>
           <div className="mt-4 mb-1">
@@ -942,9 +952,11 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                             (<span className="font-bold text-[#1a6010]">{calcCompleted(sub.patients)}</span>/{sub.patients.length})
                           </span>
                         </button>
-                        <Button size="sm" variant="outline" onClick={() => handleAddPatient(sub.id)} className="h-7 gap-1 border-border text-foreground text-xs font-bold">
-                          <Plus className="h-3 w-3" />Requirement
-                        </Button>
+                        {isAdmin && (
+                          <Button size="sm" variant="outline" onClick={() => handleAddPatient(sub.id)} className="h-7 gap-1 border-border text-foreground text-xs font-bold">
+                            <Plus className="h-3 w-3" />Requirement
+                          </Button>
+                        )}
                       </div>
                       {isSubExp && (
                         sub.patients.length === 0 ? (
@@ -963,6 +975,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                             onOpenPasienList={(p) => handleOpenPasienList(p, sub.id)}
                             onReorder={(newList) => handleReorderPatients(newList, sub.id)}
                             searchQuery={q}
+                            isAdmin={isAdmin}
                           />
                         )
                       )}
@@ -973,9 +986,11 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                   <div className="flex flex-col items-center py-10 text-muted-foreground">
                     <Layers className="h-8 w-8 mb-2 opacity-40" />
                     <p className="text-sm font-medium">Belum ada sub-departemen</p>
-                    <Button size="sm" variant="ghost" onClick={() => setAddSubDeptOpen(true)} className="mt-2 text-primary font-bold">
-                      <Plus className="mr-1 h-3.5 w-3.5" />Tambah Sub-Departemen
-                    </Button>
+                    {isAdmin && (
+                      <Button size="sm" variant="ghost" onClick={() => setAddSubDeptOpen(true)} className="mt-2 text-primary font-bold">
+                        <Plus className="mr-1 h-3.5 w-3.5" />Tambah Sub-Departemen
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -983,9 +998,11 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
               <div className="flex flex-col items-center py-10 text-muted-foreground">
                 <Users className="h-8 w-8 mb-2 opacity-40" />
                 <p className="text-sm font-medium">Belum ada requirement</p>
-                <Button size="sm" variant="ghost" onClick={() => handleAddPatient()} className="mt-2 text-primary font-bold">
-                  <Plus className="mr-1 h-3.5 w-3.5" />Tambah Requirement
-                </Button>
+                {isAdmin && (
+                  <Button size="sm" variant="ghost" onClick={() => handleAddPatient()} className="mt-2 text-primary font-bold">
+                    <Plus className="mr-1 h-3.5 w-3.5" />Tambah Requirement
+                  </Button>
+                )}
               </div>
             ) : (
               <PatientTable
@@ -998,6 +1015,7 @@ export function DepartmentCard({ department, onUpdate, onDeleteDepartment, searc
                 onOpenPasienList={(p) => handleOpenPasienList(p)}
                 onReorder={(newList) => handleReorderPatients(newList)}
                 searchQuery={q}
+                isAdmin={isAdmin}
               />
             )}
           </CardContent>

@@ -38,6 +38,7 @@ type TabKey = "dashboard" | "appointments" | "weekly"
 
 interface DashboardProps {
   onLogout: () => void
+  currentUser: { email: string; role: "admin" | "user" }
 }
 
 // ─── Brand Settings ────────────────────────────────────────────────────────────
@@ -53,23 +54,38 @@ const DEFAULT_BRAND: BrandSettings = {
   logoUrl: null,
 }
 
-async function loadBrand(): Promise<BrandSettings> {
+async function loadBrand(email: string): Promise<BrandSettings> {
+  // Try user-specific brand first, then fall back to global "brand" key
+  const userKey = `brand:${email}`
   const { data } = await supabase
     .from("app_settings")
     .select("value")
+    .eq("key", userKey)
+    .maybeSingle()
+  if (data?.value) {
+    try {
+      const parsed = JSON.parse(data.value)
+      return { ...DEFAULT_BRAND, ...parsed }
+    } catch { /* fall through */ }
+  }
+  // Fallback: global brand
+  const { data: global } = await supabase
+    .from("app_settings")
+    .select("value")
     .eq("key", "brand")
-    .single()
-  if (!data?.value) return DEFAULT_BRAND
+    .maybeSingle()
+  if (!global?.value) return DEFAULT_BRAND
   try {
-    const parsed = JSON.parse(data.value)
+    const parsed = JSON.parse(global.value)
     return { ...DEFAULT_BRAND, ...parsed }
   } catch { return DEFAULT_BRAND }
 }
 
-async function saveBrandSettings(b: BrandSettings): Promise<void> {
+async function saveBrandSettings(email: string, b: BrandSettings): Promise<void> {
+  const userKey = `brand:${email}`
   await supabase
     .from("app_settings")
-    .upsert({ key: "brand", value: JSON.stringify(b) })
+    .upsert({ key: userKey, value: JSON.stringify(b) })
 }
 
 async function uploadLogoToStorage(file: File): Promise<string | null> {
@@ -603,7 +619,8 @@ function ToothLogo({ className }: { className?: string }) {
 }
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
-export function Dashboard({ onLogout }: DashboardProps) {
+export function Dashboard({ onLogout, currentUser }: DashboardProps) {
+  const isAdmin = currentUser.role === "admin"
   const [departments, setDepartments] = useState<Department[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [weeklySlots, setWeeklySlots] = useState<WeeklySlot[]>(DEFAULT_WEEKLY)
@@ -626,7 +643,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           fetchDepartments(),
           fetchAppointments(),
           fetchWeeklySlots(),
-          loadBrand(),
+          loadBrand(currentUser.email),
         ])
         if (depts.length > 0) setDepartments(depts)
         if (appts.length > 0) setAppointments(appts)
@@ -710,7 +727,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   }
 
   const handleSaveBrand = async (b: BrandSettings) => {
-    await saveBrandSettings(b)
+    await saveBrandSettings(currentUser.email, b)
     setBrand(b)
   }
 
@@ -758,15 +775,17 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
           {/* Right actions */}
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setUserApprovalOpen(true)}
-              className="h-8 w-8 p-0 border-border text-foreground"
-              title="Kelola Pengguna"
-            >
-              <Users className="h-4 w-4" />
-            </Button>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setUserApprovalOpen(true)}
+                className="h-8 w-8 p-0 border-border text-foreground"
+                title="Kelola Pengguna"
+              >
+                <Users className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -834,21 +853,25 @@ export function Dashboard({ onLogout }: DashboardProps) {
                         className="pl-8 h-9 w-80 text-sm bg-card border-border/60 font-medium"
                       />
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setExportDeptConfirmOpen(true)}
-                      className="h-9 gap-1.5 border-border text-foreground text-sm font-bold"
-                    >
-                      <Download className="h-4 w-4" />Export Excel
-                    </Button>
-                    <Button
-                      onClick={() => setAddDeptOpen(true)}
-                      className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 h-9 font-bold"
-                      size="sm"
-                    >
-                      <Plus className="h-4 w-4" />Departemen
-                    </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setExportDeptConfirmOpen(true)}
+                        className="h-9 gap-1.5 border-border text-foreground text-sm font-bold"
+                      >
+                        <Download className="h-4 w-4" />Export Excel
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <Button
+                        onClick={() => setAddDeptOpen(true)}
+                        className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 h-9 font-bold"
+                        size="sm"
+                      >
+                        <Plus className="h-4 w-4" />Departemen
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -860,6 +883,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                       onUpdate={handleUpdateDepartment}
                       onDeleteDepartment={() => handleDeleteDepartment(dept.id)}
                       searchQuery={searchDept.trim()}
+                      isAdmin={isAdmin}
                     />
                   ))}
                   {filteredDepartments.length === 0 && searchDept && (
@@ -872,9 +896,11 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/60 bg-card py-16">
                       <LayoutDashboard className="mb-3 h-10 w-10 text-muted-foreground/30" />
                       <p className="text-muted-foreground font-bold mb-4">Belum ada departemen</p>
-                      <Button onClick={() => setAddDeptOpen(true)} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
-                        <Plus className="h-4 w-4" />Tambah Departemen
-                      </Button>
+                      {isAdmin && (
+                        <Button onClick={() => setAddDeptOpen(true)} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
+                          <Plus className="h-4 w-4" />Tambah Departemen
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

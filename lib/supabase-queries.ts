@@ -62,25 +62,31 @@ export async function registerUser({
 
 // ─── USER LOGIN (email + password, status harus 'approved') ──────────────────
 
+export type LoginResult =
+  | { status: "ok"; role: "admin" | "user" }
+  | { status: "pending" }
+  | { status: "rejected" }
+  | { status: "invalid" }
+
 export async function verifyUserLogin(
   email: string,
   password: string
-): Promise<"ok" | "pending" | "rejected" | "invalid"> {
+): Promise<LoginResult> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("password_hash, status")
+    .select("password_hash, status, role")
     .eq("email", email)
     .maybeSingle()
 
-  if (error || !data) return "invalid"
+  if (error || !data) return { status: "invalid" }
 
   const match = await bcryptjs.compare(password, data.password_hash)
-  if (!match) return "invalid"
+  if (!match) return { status: "invalid" }
 
-  if (data.status === "approved") return "ok"
-  if (data.status === "pending") return "pending"
-  if (data.status === "rejected") return "rejected"
-  return "invalid"
+  if (data.status === "approved") return { status: "ok", role: (data.role as "admin" | "user") ?? "user" }
+  if (data.status === "pending") return { status: "pending" }
+  if (data.status === "rejected") return { status: "rejected" }
+  return { status: "invalid" }
 }
 
 // ─── ADMIN: KELOLA PENGGUNA ───────────────────────────────────────────────────
@@ -183,7 +189,7 @@ export async function createUser(
       nama: displayName,
       email,
       password_hash,
-      status: "approved",
+      status: "approved" as const,
       role,
       is_active: true,
     })

@@ -11,7 +11,14 @@ function getTodayString(): string {
   return new Date().toISOString().split("T")[0]
 }
 
-function getStoredSession(): { loggedIn: boolean; date: string; email?: string } | null {
+export interface SessionData {
+  loggedIn: boolean
+  date: string
+  email: string
+  role: "admin" | "user"
+}
+
+function getStoredSession(): SessionData | null {
   if (typeof window === "undefined") return null
   try {
     const raw = localStorage.getItem(SESSION_KEY)
@@ -22,8 +29,11 @@ function getStoredSession(): { loggedIn: boolean; date: string; email?: string }
   }
 }
 
-function saveSession(email: string) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ loggedIn: true, date: getTodayString(), email }))
+function saveSession(email: string, role: "admin" | "user") {
+  localStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({ loggedIn: true, date: getTodayString(), email, role })
+  )
 }
 
 function clearSession() {
@@ -35,10 +45,12 @@ type View = "login" | "register" | "dashboard"
 export default function Home() {
   const [view, setView] = useState<View>("login")
   const [mounted, setMounted] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{ email: string; role: "admin" | "user" } | null>(null)
 
   useEffect(() => {
     const session = getStoredSession()
     if (session?.loggedIn && session.date === getTodayString()) {
+      setCurrentUser({ email: session.email, role: session.role ?? "user" })
       setView("dashboard")
     } else if (session?.loggedIn) {
       clearSession()
@@ -52,19 +64,22 @@ export default function Home() {
       const session = getStoredSession()
       if (session && session.date !== getTodayString()) {
         clearSession()
+        setCurrentUser(null)
         setView("login")
       }
     }, 3_600_000)
     return () => clearInterval(interval)
   }, [view])
 
-  const handleLogin = (email: string) => {
-    saveSession(email)
+  const handleLogin = (email: string, role: "admin" | "user") => {
+    saveSession(email, role)
+    setCurrentUser({ email, role })
     setView("dashboard")
   }
 
   const handleLogout = () => {
     clearSession()
+    setCurrentUser(null)
     setView("login")
   }
 
@@ -75,5 +90,5 @@ export default function Home() {
   if (view === "login") return (
     <LoginForm onLogin={handleLogin} onGoRegister={() => setView("register")} />
   )
-  return <Dashboard onLogout={handleLogout} />
+  return <Dashboard onLogout={handleLogout} currentUser={currentUser ?? { email: "", role: "user" }} />
 }

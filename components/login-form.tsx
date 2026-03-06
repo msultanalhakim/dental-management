@@ -8,7 +8,7 @@ import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react"
 import { verifyUserLogin } from "@/lib/supabase-queries"
 
 interface LoginFormProps {
-  onLogin: (email: string) => void
+  onLogin: (email: string, role: "admin" | "user") => void
   onGoRegister: () => void
 }
 
@@ -26,11 +26,11 @@ export function LoginForm({ onLogin, onGoRegister }: LoginFormProps) {
 
     try {
       const result = await verifyUserLogin(email, password)
-      if (result === "ok") {
-        onLogin(email)
-      } else if (result === "pending") {
+      if (result.status === "ok") {
+        onLogin(email, result.role)
+      } else if (result.status === "pending") {
         setError("Akun Anda masih menunggu persetujuan admin.")
-      } else if (result === "rejected") {
+      } else if (result.status === "rejected") {
         setError("Pendaftaran Anda ditolak. Hubungi admin untuk info lebih lanjut.")
       } else {
         setError("Email atau password salah. Silakan coba lagi.")
