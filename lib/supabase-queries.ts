@@ -103,23 +103,23 @@ export async function verifyUserLogin(
 export async function fetchPendingUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("id, nama, email, status, created_at")
+    .select("id, nama, email, status, created_at, role, is_active, can_upload_photo")
     .eq("status", "pending")
     .order("created_at", { ascending: true })
 
   if (error || !data) return []
-  return data as AppUser[]
+  return (data as Record<string, unknown>[]).map(rowToAppUser)
 }
 
 export async function fetchApprovedUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase
     .from("app_users")
-    .select("id, nama, email, status, created_at")
+    .select("id, nama, email, status, created_at, role, is_active, can_upload_photo")
     .eq("status", "approved")
     .order("created_at", { ascending: true })
 
   if (error || !data) return []
-  return data as AppUser[]
+  return (data as Record<string, unknown>[]).map(rowToAppUser)
 }
 
 export async function approveUser(id: string): Promise<void> {
@@ -229,13 +229,21 @@ export async function updateUser(
 
 export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
   const password_hash = await bcryptjs.hash(newPassword, 10)
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("app_users")
     .update({ password_hash })
     .eq("id", id)
-    .select("id")
   if (error) throw new Error(`Gagal update password: ${error.message}`)
-  if (!data || data.length === 0) throw new Error("User tidak ditemukan atau tidak ada perubahan")
+}
+
+// Ganti password berdasarkan email (untuk user yang ganti password sendiri via Settings)
+export async function changeUserPasswordByEmail(email: string, newPassword: string): Promise<void> {
+  const password_hash = await bcryptjs.hash(newPassword, 10)
+  const { error } = await supabase
+    .from("app_users")
+    .update({ password_hash })
+    .eq("email", email)
+  if (error) throw new Error(`Gagal update password: ${error.message}`)
 }
 
 // ─── DEPARTMENTS ─────────────────────────────────────────────────────────────

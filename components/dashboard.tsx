@@ -16,7 +16,7 @@ import {
   CalendarRange, Bell, Clock, AlertTriangle, Download,
   Settings, Upload, Eye, EyeOff, LockKeyhole, Users,
 } from "lucide-react"
-import { UserApprovalPanel } from "./user-approval-panel"
+import { UserManagementModal } from "./user-management-modal"
 import { ImageCropModal } from "./image-crop-modal"
 import type { Department, Appointment, WeeklySlot } from "@/lib/types"
 import { downloadXlsx, type XlsxSheet } from "@/lib/xlsx-writer"
@@ -403,10 +403,10 @@ function SettingsModal({ open, onClose, brand, onSaveBrand, currentUserEmail }: 
     if (newPw !== confirmPw) { toast.error("Konfirmasi password tidak cocok"); return }
     setPwLoading(true)
     try {
-      const { verifyPassword, changePassword } = await import("@/lib/supabase-queries")
-      const ok = await verifyPassword(currentPw)
-      if (!ok) { toast.error("Password saat ini salah"); return }
-      await changePassword(newPw)
+      const { verifyUserLogin, changeUserPasswordByEmail } = await import("@/lib/supabase-queries")
+      const result = await verifyUserLogin(currentUserEmail, currentPw)
+      if (result.status !== "ok") { toast.error("Password saat ini salah"); return }
+      await changeUserPasswordByEmail(currentUserEmail, newPw)
       toast.success("Password berhasil diubah")
       setCurrentPw(""); setNewPw(""); setConfirmPw("")
       onClose()
@@ -671,7 +671,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
   const [searchDept, setSearchDept] = useState("")
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [userApprovalOpen, setUserApprovalOpen] = useState(false)
+  const [userManagementOpen, setUserManagementOpen] = useState(false)
   const [brand, setBrand] = useState<BrandSettings>(DEFAULT_BRAND)
   const [exportDeptConfirmOpen, setExportDeptConfirmOpen] = useState(false)
 
@@ -808,7 +808,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setUserApprovalOpen(true)}
+                onClick={() => setUserManagementOpen(true)}
                 className="h-8 w-8 p-0 border-border text-foreground"
                 title="Kelola Pengguna"
               >
@@ -952,7 +952,7 @@ export function Dashboard({ onLogout, currentUser }: DashboardProps) {
       <AddDepartmentModal open={addDeptOpen} onClose={() => setAddDeptOpen(false)} onAdd={handleAddDepartment} />
       <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={onLogout} />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brand={brand} onSaveBrand={handleSaveBrand} currentUserEmail={currentUser.email} />
-      <UserApprovalPanel open={userApprovalOpen} onClose={() => setUserApprovalOpen(false)} />
+      <UserManagementModal open={userManagementOpen} onClose={() => setUserManagementOpen(false)} currentUserId={currentUser.email} />
 
       <AlertDialog open={exportDeptConfirmOpen} onOpenChange={setExportDeptConfirmOpen}>
         <AlertDialogContent className="bg-card">
