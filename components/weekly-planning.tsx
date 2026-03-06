@@ -219,7 +219,7 @@ export function WeeklyPlanning({ slots, onUpdate, departments }: WeeklyPlanningP
       return false
     }
     try {
-      await upsertWeeklySlot({ ...target, weekKey: currentWeekKey })
+      await upsertWeeklySlot(target, currentWeekKey)
       return true
     } catch {
       onUpdate(snapshot)

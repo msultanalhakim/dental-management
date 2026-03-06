@@ -634,7 +634,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
           setWeeklySlots(slots)
         } else if (slots.length === 0) {
           setWeeklySlots(DEFAULT_WEEKLY)
-          Promise.all(DEFAULT_WEEKLY.map((s) => upsertWeeklySlot(s))).catch(() => null)
+          const monday = new Date(); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+          const weekKey = monday.toISOString().slice(0, 10)
+          Promise.all(DEFAULT_WEEKLY.map((s) => upsertWeeklySlot(s, weekKey))).catch(() => null)
         } else {
           console.warn(`Weekly slots: DB has ${slots.length} rows (expected ${DEFAULT_WEEKLY.length}). Using defaults.`)
           setWeeklySlots(DEFAULT_WEEKLY)

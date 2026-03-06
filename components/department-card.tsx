@@ -159,9 +159,11 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editNama, setEditNama] = useState("")
   const [editTelp, setEditTelp] = useState("")
+  const [editKeterangan, setEditKeterangan] = useState("")
   const [addMode, setAddMode] = useState(false)
   const [newNama, setNewNama] = useState("")
   const [newTelp, setNewTelp] = useState("")
+  const [newKeterangan, setNewKeterangan] = useState("")
   const [waOpen, setWaOpen] = useState(false)
   const [waPhone, setWaPhone] = useState("")
   const [waName, setWaName] = useState("")
@@ -169,17 +171,17 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
   useEffect(() => {
     if (open) {
       setList(patient.pasienList.map((p) => ({ ...p })))
-      setEditingId(null); setAddMode(false); setNewNama(""); setNewTelp("")
+      setEditingId(null); setAddMode(false); setNewNama(""); setNewTelp(""); setNewKeterangan("")
     }
   }, [open, patient])
 
   const startEdit = (entry: PatientEntry) => {
-    setEditingId(entry.id); setEditNama(entry.namaPasien); setEditTelp(entry.nomorTelp); setAddMode(false)
+    setEditingId(entry.id); setEditNama(entry.namaPasien); setEditTelp(entry.nomorTelp); setEditKeterangan(entry.keterangan || ""); setAddMode(false)
   }
 
   const saveEdit = () => {
     if (!editNama.trim()) return
-    setList((prev) => prev.map((p) => p.id === editingId ? { ...p, namaPasien: editNama.trim(), nomorTelp: editTelp.trim() } : p))
+    setList((prev) => prev.map((p) => p.id === editingId ? { ...p, namaPasien: editNama.trim(), nomorTelp: editTelp.trim(), keterangan: editKeterangan.trim() } : p))
     setEditingId(null)
   }
 
@@ -190,15 +192,15 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
 
   const addEntry = () => {
     if (!newNama.trim()) return
-    const entry: PatientEntry = { id: `pe-${Date.now()}`, namaPasien: newNama.trim(), nomorTelp: newTelp.trim() }
+    const entry: PatientEntry = { id: `pe-${Date.now()}`, namaPasien: newNama.trim(), nomorTelp: newTelp.trim(), keterangan: newKeterangan.trim() }
     setList((prev) => [...prev, entry])
-    setNewNama(""); setNewTelp(""); setAddMode(false)
+    setNewNama(""); setNewTelp(""); setNewKeterangan(""); setAddMode(false)
   }
 
   const handleSave = () => {
     // If currently editing inline, auto-save it
     if (editingId && editNama.trim()) {
-      const finalList = list.map((p) => p.id === editingId ? { ...p, namaPasien: editNama.trim(), nomorTelp: editTelp.trim() } : p)
+      const finalList = list.map((p) => p.id === editingId ? { ...p, namaPasien: editNama.trim(), nomorTelp: editTelp.trim(), keterangan: editKeterangan.trim() } : p)
       onSave(finalList)
     } else {
       onSave(list)
@@ -244,6 +246,12 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
                       placeholder="Nomor telepon (opsional)"
                       className="bg-background h-9 text-sm"
                     />
+                    <Input
+                      value={editKeterangan}
+                      onChange={(e) => setEditKeterangan(e.target.value)}
+                      placeholder="Keterangan (opsional)"
+                      className="bg-background h-9 text-sm"
+                    />
                     <div className="flex gap-2 justify-end mt-1">
                       <Button type="button" size="sm" variant="outline" onClick={() => setEditingId(null)} className="h-8 text-xs font-bold">Batal</Button>
                       <Button type="button" size="sm" onClick={saveEdit} disabled={!editNama.trim()} className="h-8 text-xs font-bold bg-primary text-primary-foreground">Simpan</Button>
@@ -259,6 +267,9 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
                       <p className="text-sm font-bold text-foreground truncate">{entry.namaPasien}</p>
                       {entry.nomorTelp && (
                         <p className="text-xs text-muted-foreground">{entry.nomorTelp}</p>
+                      )}
+                      {entry.keterangan && (
+                        <p className="text-xs text-muted-foreground/70 italic truncate">{entry.keterangan}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
@@ -310,8 +321,15 @@ function PasienListModal({ open, onClose, patient, onSave }: PasienListModalProp
                   className="bg-background h-9 text-sm"
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEntry() } }}
                 />
+                <Input
+                  value={newKeterangan}
+                  onChange={(e) => setNewKeterangan(e.target.value)}
+                  placeholder="Keterangan (opsional)"
+                  className="bg-background h-9 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEntry() } }}
+                />
                 <div className="flex gap-2 justify-end mt-1">
-                  <Button type="button" size="sm" variant="outline" onClick={() => { setAddMode(false); setNewNama(""); setNewTelp("") }} className="h-8 text-xs font-bold">Batal</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => { setAddMode(false); setNewNama(""); setNewTelp(""); setNewKeterangan("") }} className="h-8 text-xs font-bold">Batal</Button>
                   <Button type="button" size="sm" onClick={addEntry} disabled={!newNama.trim()} className="h-8 text-xs font-bold bg-primary text-primary-foreground">
                     <Plus className="h-3 w-3 mr-1" /> Tambah
                   </Button>

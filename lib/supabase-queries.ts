@@ -280,11 +280,11 @@ export async function fetchWeeklySlots(weekKey?: string): Promise<WeeklySlot[]> 
   }))
 }
 
-export async function upsertWeeklySlot(slot: WeeklySlot & { weekKey: string }) {
+export async function upsertWeeklySlot(slot: WeeklySlot, weekKey: string) {
   await supabase.from("weekly_slots").upsert({
     id: slot.id,
     jam: slot.jam,
-    week_key: slot.weekKey,
+    week_key: weekKey,
     senin: slot.senin,
     selasa: slot.selasa,
     rabu: slot.rabu,

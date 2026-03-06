@@ -17,6 +17,7 @@ export interface PatientEntry {
   id: string
   namaPasien: string
   nomorTelp: string
+  keterangan?: string
 }
 
 export interface Patient {
